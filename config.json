@@ -1,0 +1,166 @@
+{
+  "watch_dir": "/run/user/1000/gvfs/afp-volume:host=duprintes.local,user=duprintes,volume=home/abschlussarbeiten",
+  "output_dir": "/run/user/1000/gvfs/afp-volume:host=duprintes.local,user=duprintes,volume=home/kunden_präg",
+  "templates_dir": "/run/user/1000/gvfs/afp-volume:host=duprintes.local,user=duprintes,volume=Public/Prägungen",
+  "ocr_min_chars": 80,
+  "ocr_dpi": 300,
+  "ocr_lang": "deu+eng",
+  "watch_settle_seconds": 1.5,
+  "watch_rescan_interval": 300,
+  "publish_year": "2026",
+  "processed_dir": "/run/user/1000/gvfs/afp-volume:host=duprintes.local,user=duprintes,volume=home/abschlussarbeiten/processed",
+  "failed_dir": "/run/user/1000/gvfs/afp-volume:host=duprintes.local,user=duprintes,volume=home/abschlussarbeiten/failed",
+  "write_title_variant": false,
+  "degree_labels": {
+    "bachelor": "Bachelorarbeit",
+    "master": "Masterarbeit",
+    "dissertation": "Dissertation",
+    "unknown": "Thesis"
+  },
+  "placeholders": {
+    "degree": [
+      "Bachelor-Thesis",
+      "Master-Thesis",
+      "Bachelorarbeit",
+      "Masterarbeit",
+      "Projektarbeit",
+      "Dissertation",
+      "Thesis"
+    ],
+    "author": [
+      "Max Mustermann",
+      "author name",
+      "Author Name",
+      "Autor"
+    ],
+    "year": [
+      "2026",
+      "2025",
+      "2024",
+      "2023",
+      "2022",
+      "year",
+      "Year",
+      "Jahr"
+    ],
+    "title": [
+      "Title",
+      "Titel",
+      "titel",
+      "Thesis Title"
+    ]
+  },
+  "model": {
+    "backend": "ollama",
+    "name": "ornith-1.5:9b",
+    "host": "http://192.168.2.123:11434",
+    "openai_base": "http://127.0.0.1:1234/v1",
+    "api_key": "not-needed",
+    "timeout": 180
+  },
+  "universities": [
+    {
+      "id": "th-koeln",
+      "aliases": [
+        "technische hochschule köln",
+        "th köln",
+        "technology arts sciences",
+        "th koln",
+        "cologne institute of technology"
+      ],
+      "template": "Köln TH-Muster.upf"
+    },
+    {
+      "id": "iu",
+      "aliases": [
+        "iu",
+        "internationale hochschule",
+        "iu internationale hochschule",
+        "international university"
+      ],
+      "template": "IU-Muster.upf"
+    },
+    {
+      "id": "wuppertal",
+      "aliases": [
+        "universität wuppertal",
+        "bergische universität wuppertal",
+        "buw",
+        "wuppertal"
+      ],
+      "template": "Wuppertal_universität.upf"
+    },
+    {
+      "id": "bremen",
+      "aliases": [
+        "universität bremen",
+        "uni bremen",
+        "bremen"
+      ],
+      "template": "Bremen - Uni.upf"
+    },
+    {
+      "id": "hagen",
+      "aliases": [
+        "fernuniversität hagen",
+        "fernuni hagen",
+        "hagen"
+      ],
+      "template": "Hagen Fernuni.upf"
+    },
+    {
+      "id": "dhbw-cas",
+      "aliases": [
+        "dhbw",
+        "duale hochschule",
+        "center for advanced studies",
+        "cas"
+      ],
+      "template": "DHBW - CAS.upf"
+    },
+    {
+      "id": "duesseldorf-hwk",
+      "aliases": [
+        "handwerkskammer düsseldorf",
+        "hwk düsseldorf",
+        "hwk duesseldorf"
+      ],
+      "template": "Düsseldorf-HWK.upf"
+    },
+    {
+      "id": "eu-fh",
+      "aliases": [
+        "europäische fachhochschule",
+        "eu fh",
+        "eufh"
+      ],
+      "template": "EU - FH.upf"
+    },
+    {
+      "id": "hrw",
+      "aliases": [
+        "hochschule ruhr west",
+        "ruhr west",
+        "hrw"
+      ],
+      "template": "Hochschule Ruhr West.upf"
+    },
+    {
+      "id": "iba",
+      "aliases": [
+        "internationale berufsakademie",
+        "iba"
+      ],
+      "template": "IBA_Muster.upf"
+    },
+    {
+      "id": "barmen",
+      "aliases": [
+        "berufskolleg barmen",
+        "europaschule barmen",
+        "barmen"
+      ],
+      "template": "Barmen HS Europaschule.upf"
+    }
+  ]
+}
