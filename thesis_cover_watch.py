@@ -838,6 +838,7 @@ def model_search_templates(
                 mcfg.get("host", "http://[IP_ADDRESS]:11434"),
                 min(int(mcfg.get("timeout", 180)), 60),
                 think=model_think_value(mcfg),
+                num_ctx=int(mcfg.get("num_ctx", 8192)),
             )
         else:
             raw = call_openai(
@@ -1060,12 +1061,13 @@ def call_ollama(
     json_mode: bool = True,
     num_predict: int = 300,
     think: bool | str = False,
+    num_ctx: int = 8192,
 ) -> str:
     payload = {
         "model": model,
         "stream": False,
         "think": think,
-        "options": {"temperature": 0.0, "num_predict": num_predict},
+        "options": {"temperature": 0.0, "num_predict": num_predict, "num_ctx": num_ctx},
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -1216,9 +1218,10 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
                     mcfg.get("name", "qwen3:8b"),
                     SYSTEM,
                     user,
-                    mcfg.get("host", "http://127.0.0.1:11434"),
+                    mcfg.get("host", "http://[IP_ADDRESS]:11434"),
                     int(mcfg.get("timeout", 180)),
                     think=model_think_value(mcfg),
+                    num_ctx=int(mcfg.get("num_ctx", 8192)),
                 )
             else:
                 raw = call_openai(
@@ -1780,6 +1783,7 @@ def write_fail_report(
                     json_mode=False,
                     num_predict=400,
                     think=model_think_value(mcfg),
+                    num_ctx=int(mcfg.get("num_ctx", 8192)),
                 )
             else:
                 model_note = call_openai(

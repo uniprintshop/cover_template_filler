@@ -12,8 +12,8 @@
   "failed_dir": "/run/user/1000/gvfs/afp-volume:host=duprintes.local,user=duprintes,volume=home/abschlussarbeiten/failed",
   "write_title_variant": false,
   "degree_labels": {
-    "bachelor": "Bachelorarbeit",
-    "master": "Masterarbeit",
+    "bachelor": "Bachelor-Thesis",
+    "master": "Master-Thesis",
     "dissertation": "Dissertation",
     "unknown": "Thesis"
   },
@@ -53,6 +53,7 @@
   "model": {
     "backend": "ollama",
     "name": "ornith-1.5:9b",
+    "num_ctx": 8192,
     "host": "http://192.168.2.123:11434",
     "openai_base": "http://127.0.0.1:1234/v1",
     "api_key": "not-needed",
@@ -161,6 +162,14 @@
         "barmen"
       ],
       "template": "Barmen HS Europaschule.upf"
+    },
+    {
+      "id": "Münster-FH",
+      "aliases": [
+        "Münster",
+        "Universität Münster"
+      ],
+      "template": "Münster-FH.upf"
     }
   ]
 }
