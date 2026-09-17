@@ -1696,6 +1696,47 @@ def find_template_pair(chosen: str, templates_dir: Path) -> tuple[Path | None, P
     return untitled, titled
 
 
+def template_variants_for(
+    uni: dict | None, chosen: str | None, templates_dir: Path
+) -> list[Path]:
+    """Every plain .upf template that belongs to the same university.
+
+    Membership (either rule qualifies):
+    (a) every distinctive token of the template filename appears in the
+        university's aliases/template name — so "Wuppertal Groß-Logo" and
+        "Wuppertal Rund" both match a uni aliased "wuppertal", while
+        "Berufskolleg Barmen" does not match a uni aliased only "barmen";
+    (b) it shares the chosen template's filename family (Muster / Muster-2 …).
+    The chosen template is always first when it exists.
+    """
+    out: list[Path] = []
+    seen: set[str] = set()
+
+    def add(p: Path | None) -> None:
+        if p is None or not p.is_file() or is_title_template(p.name):
+            return
+        key = str(p.resolve())
+        if key not in seen:
+            seen.add(key)
+            out.append(p)
+
+    add(templates_dir / chosen if chosen else None)
+
+    alias_blob = norm(" ".join(_uni_aliases(uni))) if uni else ""
+    family = template_family(chosen) if chosen else None
+    for path in list_plain_templates(templates_dir):
+        toks = [norm(t) for t in distinctive_filename_tokens(path.name)]
+        if toks and alias_blob and all(t in alias_blob for t in toks):
+            # Require at least one long identifying token, so a template whose
+            # ONLY distinctive token is the city ("Universität_zu_köln") is
+            # not confused with another school in the same city (TH Köln).
+            if any(len(t) >= 6 for t in toks):
+                add(path)
+        elif family is not None and template_family(path.name) == family:
+            add(path)
+    return out
+
+
 FAIL_SYSTEM = """You write a short failure report for an operator who foil-stamps thesis covers.
 Plain text only, no markdown, 6–12 lines.
 Match the language of COVER_TEXT (German or English).
@@ -1954,54 +1995,78 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
             "model did not pick a publishing year that appears on the cover. Refusing to stamp."
         )
 
-    if not fields["university_template"]:
-        raise RuntimeError(
-            f"Could not match a .upf template. Model said template={fields.get('template_model')!r} "
-            f"university={fields['university_raw']!r}. "
-            f"Cover-grounded files were: {fields.get('template_candidates') or []}."
-        )
     if not fields["author"] or not fields["year"]:
         raise RuntimeError(f"Missing author or year: author={fields['author']!r} year={fields['year']!r}")
 
     templates_dir = Path(cfg["templates_dir"])
-    untitled, titled = find_template_pair(fields["university_template"], templates_dir)
-    if untitled is None and titled is None:
+    uni_obj = next(
+        (u for u in cfg.get("universities", []) if u.get("id") == fields["university_id"]),
+        None,
+    )
+    variants = template_variants_for(uni_obj, fields["university_template"], templates_dir)
+    if not variants:
+        if not fields["university_template"]:
+            raise RuntimeError(
+                f"Could not match a .upf template. Model said template={fields.get('template_model')!r} "
+                f"university={fields['university_raw']!r}. "
+                f"Cover-grounded files were: {fields.get('template_candidates') or []}."
+            )
         raise RuntimeError(f"Template not found: {templates_dir / fields['university_template']}")
+    if not fields["university_template"]:
+        fields["university_template"] = variants[0].name
+    if len(variants) > 1:
+        note = (
+            f"{len(variants)} matching templates found for university "
+            f"{fields['university_id']!r} — one stamped cover written per template: "
+            + ", ".join(p.name for p in variants)
+        )
+        fields["notes"].append(note)
+        LOG.info("%s", note)
 
     out_dir = Path(cfg["output_dir"])
     ensure_dirs(out_dir)
-    plain_path, title_path, sidecar = allocate_output_paths(out_dir, output_base_name(fields))
+    _, _, sidecar = allocate_output_paths(out_dir, output_base_name(fields))
     written: list[Path] = []
     outputs: list[dict] = []
     variant_errors: list[str] = []
 
-    # Optional second file: the TITEL/TITLE sibling variant. Off by default —
-    # each family currently has only ONE template in the library, so writing
-    # both would just duplicate the same cover under two names.
+    # Optional extra file per template: the TITEL/TITLE sibling variant.
+    # Off by default; enable with "write_title_variant": true.
     write_title = bool(cfg.get("write_title_variant", False))
+    single = len(variants) == 1
 
-    if untitled is not None:
+    for tpl in variants:
+        base = output_base_name(fields)
+        if not single:
+            # Multiple variants: make each output file identifiable by its
+            # source template, e.g. `…_th-koeln_Koln_TH_Muster.upf`.
+            base = f"{base}_{safe_stem(tpl.stem)}"
+        plain_path, _tp, _sc = allocate_output_paths(out_dir, base)
         try:
-            path = _write_upf(untitled, fields, cfg, plain_path)
+            path = _write_upf(tpl, fields, cfg, plain_path)
             written.append(path)
-            outputs.append({"variant": "plain", "template": untitled.name, "path": str(path)})
+            outputs.append({"variant": "plain", "template": tpl.name, "path": str(path)})
         except Exception as exc:
-            variant_errors.append(f"plain ({untitled.name}): {exc}")
-            LOG.exception("Failed to fill untitled template %s", untitled)
+            variant_errors.append(f"plain ({tpl.name}): {exc}")
+            LOG.exception("Failed to fill template %s", tpl)
 
-    if write_title and titled is not None:
-        try:
-            path = _write_upf(titled, fields, cfg, title_path)
-            written.append(path)
-            outputs.append({"variant": "title", "template": titled.name, "path": str(path)})
-        except Exception as exc:
-            variant_errors.append(f"title ({titled.name}): {exc}")
-            LOG.exception("Failed to fill title template %s", titled)
-    elif titled is None:
-        LOG.info(
-            "No TITEL/TITLE sibling for family of %s — plain cover only",
-            fields["university_template"],
-        )
+        if write_title:
+            _u, titled = find_template_pair(tpl.name, templates_dir)
+            if titled is not None:
+                title_base = output_base_name(fields)
+                if not single:
+                    title_base = f"{title_base}_{safe_stem(titled.stem)}"
+                title_path, _t2, _s2 = allocate_output_paths(out_dir, title_base)
+                try:
+                    path = _write_upf(titled, fields, cfg, title_path)
+                    written.append(path)
+                    outputs.append({"variant": "title", "template": titled.name, "path": str(path)})
+                except Exception as exc:
+                    variant_errors.append(f"title ({titled.name}): {exc}")
+                    LOG.exception("Failed to fill title template %s", titled)
+            else:
+                variant_errors.append(f"no TITEL/TITLE sibling next to {tpl.name}")
+                LOG.info("No TITEL/TITLE sibling for family of %s", tpl.name)
 
     if not written:
         raise RuntimeError("Could not write any UPF: " + "; ".join(variant_errors))
