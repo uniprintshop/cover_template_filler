@@ -357,9 +357,57 @@ DEGREE_PHRASES = [
 
 DEGREE_PATTERNS = [
     (r"\b(ph\.?\s*d\.?|doktorarbeit|dissertation|doctoral\s+thesis|promotionsarbeit)\b", "dissertation"),
-    (r"\b(master'?s?\s+thesis|masterarbeit|master-thesis|m\.?\s*sc\.?|m\.?\s*a\.?|magister)\b", "master"),
-    (r"\b(bachelor'?s?\s+thesis|bachelorarbeit|bachelor-thesis|projektarbeit|b\.?\s*sc\.?|b\.?\s*a\.?)\b", "bachelor"),
+    (r"\b(master'?s?\s+thesis|masterarbeit|master-thesis|masterthesis|"
+     r"master\s+of\s+(arts|science|engineering|laws|education|business)|m\.?\s*sc\.?|m\.?\s*a\.?|magister)\b", "master"),
+    (r"\b(bachelor'?s?\s+thesis|bachelorarbeit|bachelor-thesis|bachelorthesis|projektarbeit|"
+     r"bachelor\s+of\s+(arts|science|engineering|laws|education|business)|b\.?\s*sc\.?|b\.?\s*a\.?)\b", "bachelor"),
 ]
+
+# Closed whitelist of degree wordings that may ever be stamped. Covers
+# also print degree-programme names like "Bachelor of Arts" which must
+# never leak into the stamp, so anything outside this list falls back to
+# the configured degree_labels.
+DEGREE_ALLOWED = [
+    "Bachelor-Thesis",
+    "Bachelorthesis",
+    "Bachelorarbeit",
+    "Bachelor Thesis",
+    "Bachelor's Thesis",
+    "Master-Thesis",
+    "Masterthesis",
+    "Masterarbeit",
+    "Master Thesis",
+    "Master's Thesis",
+    "Diplomarbeit",
+    "Diplom-Thesis",
+    "Diplomthesis",
+    "Diploma Thesis",
+    "Projektarbeit",
+    "Dissertation",
+    "Doktorarbeit",
+    "Doctoral Thesis",
+    "Promotionsarbeit",
+    "PhD Thesis",
+    "Ph.D. Thesis",
+]
+
+_ALLOWED_DEGREE_KEYS = {norm(p): p for p in DEGREE_ALLOWED}
+_ALLOWED_DEGREE_RES = sorted(
+    (
+        (
+            re.compile(
+                r"[\s'’\-.]*".join(
+                    re.escape(w) for w in re.findall(r"[A-Za-zÄÖÜäöüß.]+", p)
+                ),
+                re.IGNORECASE,
+            ),
+            p,
+        )
+        for p in DEGREE_ALLOWED
+    ),
+    key=lambda t: len(t[1]),
+    reverse=True,
+)
 
 YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
 AUTHOR_CUE = re.compile(
@@ -397,17 +445,21 @@ def guess_degree(text: str) -> str:
     return "unknown"
 
 
-def exact_degree_phrase(text: str) -> str:
-    """Return the degree wording exactly as it appears in the PDF."""
-    best = ""
-    low = text.lower()
-    for phrase in DEGREE_PHRASES:
-        i = low.find(phrase.lower())
-        if i >= 0:
-            exact = text[i : i + len(phrase)]
-            if len(exact) > len(best):
-                best = exact
-    return best
+def is_allowed_degree(value: str) -> bool:
+    return norm(value) in _ALLOWED_DEGREE_KEYS
+
+
+def allowed_degree_phrase(text: str) -> str:
+    """Return the degree wording exactly as printed, if it is whitelisted.
+
+    Matches flexible separators so glued PDF text ("Bachelorthesis"),
+    apostrophe variants and hyphens all resolve to a whitelist entry.
+    """
+    for rx, _phrase in _ALLOWED_DEGREE_RES:
+        m = rx.search(text)
+        if m:
+            return m.group(0)
+    return ""
 
 
 def years_in(text: str) -> list[str]:
@@ -1019,7 +1071,7 @@ Rules:
 - The author line may stand alone with no "vorgelegt von" / "written by". Still copy that name exactly.
 - If several universities appear, pick the awarding institution (letterhead), still copied verbatim.
 - If several years appear, YOU decide which is the publishing/submission year (not a start date, copyright, or cited work). Copy that year exactly.
-- degree_phrase is the exact wording on the cover (e.g. Bachelorarbeit, Master-Thesis, Projektarbeit). Do not rewrite it.
+- degree_phrase MUST be copied character-for-character from COVER_TEXT AND be exactly one of these options: Bachelor-Thesis, Bachelorthesis, Bachelorarbeit, Bachelor Thesis, Bachelor's Thesis, Master-Thesis, Masterthesis, Masterarbeit, Master Thesis, Master's Thesis, Diplomarbeit, Diplom-Thesis, Diploma Thesis, Projektarbeit, Dissertation, Doktorarbeit, Doctoral Thesis, Promotionsarbeit, PhD Thesis, Ph.D. Thesis. If the cover shows a degree-programme name instead (e.g. "Bachelor of Arts", "Master of Science"), set degree_phrase to "" and pick degree_type. Do not rewrite it.
 - If AVAILABLE_TEMPLATES is present, template MUST be copied exactly from that list (one filename). Pick the foil for the awarding university. Prefer the general university cover, not a Gymnasium, IHK, church, or partner school unless that body is clearly the issuer. Never pick a TITEL/TITLE file. If AVAILABLE_TEMPLATES is omitted, set template to "".
 - Do not fix spelling. Do not translate. Do not invent.
 - year must be a 4-digit year that appears in COVER_TEXT.
@@ -1289,7 +1341,11 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
         dt = degree if degree != "unknown" else "unknown"
 
     model_phrase = str(model_fields.get("degree_phrase") or "").strip()
-    if not (model_phrase and verbatim_ok(model_phrase, hay)):
+    if not (
+        model_phrase
+        and is_allowed_degree(model_phrase)
+        and verbatim_ok(model_phrase, hay)
+    ):
         model_phrase = ""
 
     uni_guess = str(model_fields.get("university") or "").strip()
@@ -1339,7 +1395,7 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
             template_name = ""
 
     labels = cfg.get("degree_labels", {})
-    printed = model_phrase or exact_degree_phrase(cover_text)
+    printed = model_phrase or allowed_degree_phrase(cover_text)
     if printed:
         degree_text = printed
     else:
