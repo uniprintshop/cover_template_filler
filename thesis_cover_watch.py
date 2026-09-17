@@ -826,8 +826,9 @@ def model_search_templates(
         "METADATA is untrusted; use only COVER_TEXT clues.\n"
         f"METADATA: {json.dumps(meta, ensure_ascii=False)}\n"
         f"EXTRACTED university={uni_guess!r} author={author!r} degree_type={degree_type!r}\n"
-        f"AVAILABLE_TEMPLATES ({len(catalog)} files): {json.dumps(catalog, ensure_ascii=False)}\n"
-        f"COVER_TEXT:\n{cover_text[:3500]}\n"
+        f"AVAILABLE_TEMPLATES ({len(catalog)} files, one per line):\n"
+        + "\n".join(catalog)
+        + f"\nCOVER_TEXT:\n{cover_text_for_model(cover_text)}\n"
     )
     try:
         if mcfg.get("backend", "ollama") == "ollama":
@@ -839,6 +840,8 @@ def model_search_templates(
                 min(int(mcfg.get("timeout", 180)), 60),
                 think=model_think_value(mcfg),
                 num_ctx=int(mcfg.get("num_ctx", 8192)),
+                keep_alive=str(mcfg.get("keep_alive", "30m")),
+                num_predict=150,
             )
         else:
             raw = call_openai(
@@ -1062,11 +1065,13 @@ def call_ollama(
     num_predict: int = 300,
     think: bool | str = False,
     num_ctx: int = 8192,
+    keep_alive: str = "30m",
 ) -> str:
     payload = {
         "model": model,
         "stream": False,
         "think": think,
+        "keep_alive": keep_alive,
         "options": {"temperature": 0.0, "num_predict": num_predict, "num_ctx": num_ctx},
         "messages": [
             {"role": "system", "content": system},
@@ -1128,6 +1133,28 @@ def call_openai(
     except urllib.error.URLError as exc:
         raise RuntimeError(f"OpenAI-compatible endpoint not reachable at {base} ({exc.reason})") from exc
     return body["choices"][0]["message"]["content"]
+
+
+def cover_text_for_model(text: str, max_chars: int = 2400) -> str:
+    """Trim cover text for the model prompt without losing cover fields.
+
+    Pages 1-2 often include a table of contents ("Inhalt ....... II") whose
+    dot-leader lines cost the model expensive prefill tokens but never hold
+    author/university/year. Heuristics and verbatim validation still use the
+    FULL text; only the model's view is trimmed.
+    """
+    lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if re.search(r"\.{4,}", stripped):  # dot leaders / ToC entries
+            continue
+        if re.fullmatch(r"(?i)(inhaltsverzeichnis|contents|table of contents)", stripped):
+            continue
+        lines.append(line)
+    out = "\n".join(lines).strip()
+    if len(out) > max_chars:
+        out = out[:max_chars]
+    return out
 
 
 def parse_json_object(raw: str) -> dict:
@@ -1206,7 +1233,7 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
     )
     if need_model_template:
         user += f"AVAILABLE_TEMPLATES: {json.dumps(available_names, ensure_ascii=False)}\n"
-    user += f"COVER_TEXT:\n{cover_text[:3500]}\n"
+    user += f"COVER_TEXT:\n{cover_text_for_model(cover_text)}\n"
 
     model_fields: dict = {}
     mcfg = cfg.get("model", {})
@@ -1222,6 +1249,7 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
                     int(mcfg.get("timeout", 180)),
                     think=model_think_value(mcfg),
                     num_ctx=int(mcfg.get("num_ctx", 8192)),
+                    keep_alive=str(mcfg.get("keep_alive", "30m")),
                 )
             else:
                 raw = call_openai(
@@ -1811,7 +1839,7 @@ def write_fail_report(
         user = (
             f"ERROR: {facts['error']}\n"
             f"EXTRACTED: {json.dumps(facts['fields'], ensure_ascii=False)}\n"
-            f"COVER_TEXT:\n{cover_text[:2500]}\n"
+            f"COVER_TEXT:\n{cover_text_for_model(cover_text, 2000)}\n"
         )
         try:
             if mcfg.get("backend", "ollama") == "ollama":
@@ -1825,6 +1853,7 @@ def write_fail_report(
                     num_predict=400,
                     think=model_think_value(mcfg),
                     num_ctx=int(mcfg.get("num_ctx", 8192)),
+                    keep_alive=str(mcfg.get("keep_alive", "30m")),
                 )
             else:
                 model_note = call_openai(
