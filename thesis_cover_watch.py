@@ -16,6 +16,7 @@ import logging
 import re
 import shutil
 import sys
+import threading
 import time
 import unicodedata
 import urllib.error
@@ -151,7 +152,10 @@ def wait_until_stable(path: Path, settle: float) -> bool:
             stable_since = None
             last = size
         time.sleep(0.2)
-    return path.exists() and path.stat().st_size > 0
+    try:
+        return path.exists() and path.stat().st_size > 0
+    except FileNotFoundError:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -2204,12 +2208,56 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
     return written
 
 
-def move_aside(pdf_path: Path, dest_dir: Path) -> None:
+def move_aside(pdf_path: Path, dest_dir: Path) -> Path | None:
+    """Move a processed/failed PDF into dest_dir.
+
+    Idempotent: if the source is already gone (the event watcher and the
+    periodic rescan can both race for the same file, and the first one to
+    finish moves it) this is a no-op rather than a crash.
+    """
+    if not pdf_path.exists():
+        LOG.info("Nothing to move — %s is already gone", pdf_path.name)
+        return None
     ensure_dirs(dest_dir)
     target = dest_dir / pdf_path.name
     if target.exists():
         target = dest_dir / f"{pdf_path.stem}_{int(time.time())}{pdf_path.suffix}"
-    retry_io(lambda: shutil.move(str(pdf_path), str(target)), what=f"moving {pdf_path.name}")
+    try:
+        return retry_io(lambda: shutil.move(str(pdf_path), str(target)), what=f"moving {pdf_path.name}")
+    except FileNotFoundError:
+        LOG.info("Source vanished while moving %s — already handled elsewhere", pdf_path.name)
+        return None
+
+
+_PROCESS_LOCK = threading.Lock()
+
+
+def handle_pdf(pdf_path: Path, cfg: dict, origin: str) -> None:
+    """Process one PDF and move it aside; never raises.
+
+    Both the event watcher (observer thread) and scan_existing (main thread)
+    can hand us the same file. Serializing on a lock plus re-checking that
+    the file still exists makes the second caller a no-op, so a PDF is only
+    processed once and no move race can kill the process.
+    """
+    with _PROCESS_LOCK:
+        if not pdf_path.exists():
+            LOG.info("Skipping %s (%s) — already handled", pdf_path.name, origin)
+            return
+        dest: str | None = None
+        try:
+            process_pdf(pdf_path, cfg)
+            dest = cfg.get("processed_dir")
+        except Exception as exc:
+            LOG.error("Failed on %s (%s): %s", pdf_path, origin, exc)
+            dest = cfg.get("failed_dir")
+        if not dest:
+            return
+        try:
+            move_aside(pdf_path, Path(dest))
+        except Exception:
+            # A failure to file the PDF away must never take the watcher down.
+            LOG.exception("Could not move %s to %s — leaving it in the watch folder", pdf_path, dest)
 
 
 class PdfHandler(FileSystemEventHandler):
@@ -2228,6 +2276,14 @@ class PdfHandler(FileSystemEventHandler):
         self._maybe(Path(event.dest_path))
 
     def _maybe(self, path: Path) -> None:
+        # Any exception here would kill the watchdog emitter thread and leave
+        # the process running but no longer watching. Never let one escape.
+        try:
+            self._handle_event(path)
+        except Exception:
+            LOG.exception("Unhandled error while reacting to event for %s", path)
+
+    def _handle_event(self, path: Path) -> None:
         if path.suffix.lower() != ".pdf":
             return
         key = str(path.resolve()) if path.exists() else str(path)
@@ -2240,14 +2296,7 @@ class PdfHandler(FileSystemEventHandler):
         if not wait_until_stable(path, settle):
             LOG.warning("File never stabilized: %s", path)
             return
-        try:
-            process_pdf(path, self.cfg)
-            if self.cfg.get("processed_dir"):
-                move_aside(path, Path(self.cfg["processed_dir"]))
-        except Exception as exc:
-            LOG.error("Failed on %s: %s", path, exc)
-            if self.cfg.get("failed_dir"):
-                move_aside(path, Path(self.cfg["failed_dir"]))
+        handle_pdf(path, self.cfg, origin="watch")
 
 
 def scan_existing(cfg: dict) -> None:
@@ -2266,14 +2315,7 @@ def scan_existing(cfg: dict) -> None:
     if not unique:
         LOG.info("No PDFs in %s", watch)
     for pdf in unique:
-        try:
-            process_pdf(pdf, cfg)
-            if cfg.get("processed_dir"):
-                move_aside(pdf, Path(cfg["processed_dir"]))
-        except Exception as exc:
-            LOG.error("Failed on existing %s: %s", pdf, exc)
-            if cfg.get("failed_dir"):
-                move_aside(pdf, Path(cfg["failed_dir"]))
+        handle_pdf(pdf, cfg, origin="scan")
 
 
 def main() -> int:
@@ -2337,22 +2379,31 @@ def main() -> int:
     observer.schedule(handler, str(Path(cfg["watch_dir"])), recursive=False)
     observer.start()
     LOG.info("Watching %s  →  %s", cfg["watch_dir"], cfg["output_dir"])
+    exit_code = 0
     try:
-        if cfg.get("watch_rescan_interval"):
-            interval = float(cfg["watch_rescan_interval"])
-            last = time.time()
-            while True:
-                time.sleep(1)
-                if time.time() - last >= interval:
-                    last = time.time()
+        interval = float(cfg.get("watch_rescan_interval") or 0)
+        last = time.time()
+        while True:
+            time.sleep(1)
+            if not observer.is_alive():
+                # A crash inside the observer thread would otherwise leave the
+                # process running but deaf to new PDFs. Exit so systemd's
+                # Restart=always brings up a fresh watcher.
+                LOG.error("File watcher thread died — exiting so the service restarts")
+                exit_code = 1
+                break
+            if interval and time.time() - last >= interval:
+                last = time.time()
+                try:
                     scan_existing(cfg)
-        else:
-            while True:
-                time.sleep(1)
+                except Exception:
+                    LOG.exception("Periodic rescan failed — watcher keeps running")
     except KeyboardInterrupt:
+        LOG.info("Interrupted — stopping watcher")
+    finally:
         observer.stop()
     observer.join()
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":
