@@ -370,48 +370,69 @@ DEGREE_PATTERNS = [
 # Closed whitelist of degree wordings that may ever be stamped. Covers
 # also print degree-programme names like "Bachelor of Arts" which must
 # never leak into the stamp, so anything outside this list falls back to
-# the configured degree_labels.
+# the configured degree_labels. This list is also the model's menu: the
+# SYSTEM prompt is generated from it (see _DEGREE_OPTIONS below).
 DEGREE_ALLOWED = [
+    # Bachelor
     "Bachelor-Thesis",
     "Bachelorthesis",
     "Bachelorarbeit",
     "Bachelor Thesis",
     "Bachelor's Thesis",
+    # Master
     "Master-Thesis",
     "Masterthesis",
     "Masterarbeit",
     "Master Thesis",
     "Master's Thesis",
+    # Diplom
     "Diplomarbeit",
     "Diplom-Thesis",
     "Diplomthesis",
     "Diploma Thesis",
+    # Projekt
     "Projektarbeit",
+    # Dissertation / Promotion
     "Dissertation",
     "Doktorarbeit",
     "Doctoral Thesis",
     "Promotionsarbeit",
     "PhD Thesis",
     "Ph.D. Thesis",
+    # Generic "final thesis" wordings — name the kind without naming the
+    # degree, and some covers use only these (singular and plural).
+    "Wissenschaftliche Abschlussarbeit",
+    "Wissenschaftliche Abschlussarbeiten",
+    "Wissenschaftliche Arbeit",
+    "Wissenschaftliche Arbeiten",
+    "Wissenschaftliche Hausarbeit",
+    "Wissenschaftliche Hausarbeiten",
+    "Abschlussarbeit",
+    "Abschlussarbeiten",
+    "Studienarbeit",
+    "Studienarbeiten",
+    "Seminararbeit",
+    "Seminararbeiten",
+    "Hausarbeit",
+    "Hausarbeiten",
+    "Examensarbeit",
+    "Examensarbeiten",
+    "Zulassungsarbeit",
+    "Zulassungsarbeiten",
+    "Thesis",
 ]
 
+# Prompt menu, derived so a new entry never has to be duplicated by hand.
+_DEGREE_OPTIONS = ", ".join(DEGREE_ALLOWED)
+
 _ALLOWED_DEGREE_KEYS = {norm(p): p for p in DEGREE_ALLOWED}
-_ALLOWED_DEGREE_RES = sorted(
-    (
-        (
-            re.compile(
-                r"[\s'’\-.]*".join(
-                    re.escape(w) for w in re.findall(r"[A-Za-zÄÖÜäöüß.]+", p)
-                ),
-                re.IGNORECASE,
-            ),
-            p,
-        )
-        for p in DEGREE_ALLOWED
-    ),
-    key=lambda t: len(t[1]),
-    reverse=True,
-)
+_ALLOWED_DEGREE_RES = [
+    re.compile(
+        r"[\s'’\-.]*".join(re.escape(w) for w in re.findall(r"[A-Za-zÄÖÜäöüß.]+", p)),
+        re.IGNORECASE,
+    )
+    for p in DEGREE_ALLOWED
+]
 
 YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
 AUTHOR_CUE = re.compile(
@@ -453,17 +474,62 @@ def is_allowed_degree(value: str) -> bool:
     return norm(value) in _ALLOWED_DEGREE_KEYS
 
 
-def allowed_degree_phrase(text: str) -> str:
-    """Return the degree wording exactly as printed, if it is whitelisted.
+def _collect_allowed_degree_matches(text: str) -> list[tuple[int, int, str]]:
+    """All whitelisted occurrences, nested matches collapsed to the longest.
 
-    Matches flexible separators so glued PDF text ("Bachelorthesis"),
-    apostrophe variants and hyphens all resolve to a whitelist entry.
+    Prevents "Abschlussarbeit" from shadowing "Wissenschaftliche
+    Abschlussarbeit" (and the plural forms from being cut short).
     """
-    for rx, _phrase in _ALLOWED_DEGREE_RES:
-        m = rx.search(text)
-        if m:
-            return m.group(0)
-    return ""
+    spans = [
+        (m.start(), m.end())
+        for rx in _ALLOWED_DEGREE_RES
+        for m in rx.finditer(text)
+    ]
+    spans.sort(key=lambda s: s[1] - s[0], reverse=True)
+    kept: list[tuple[int, int, str]] = []
+    for start, end in spans:
+        if any(k_start <= start and end <= k_end for k_start, k_end, _ in kept):
+            continue
+        kept.append((start, end, text[start:end]))
+    return kept
+
+
+def allowed_degree_phrase(text: str) -> str:
+    """Return the thesis-kind wording exactly as printed, if whitelisted.
+
+    Matches flexible separators, so glued PDF text ("Bachelorthesis"),
+    apostrophe/hyphen variants and missing spaces still resolve.
+
+    Cover pages routinely mention the kind more than once ("Diese
+    Bachelorarbeit widme ich ..."), so candidates are ranked: a phrase
+    alone on its own line (the actual kind line) beats one embedded in a
+    sentence, then the earliest occurrence wins, then the longest.
+    """
+    matches = _collect_allowed_degree_matches(text)
+    if not matches:
+        return ""
+    lines = text.splitlines()
+    line_starts: list[int] = []
+    offset = 0
+    for line in lines:
+        line_starts.append(offset)
+        offset += len(line) + 1
+
+    def line_at(pos: int) -> str:
+        idx = 0
+        for i, start in enumerate(line_starts):
+            if start <= pos:
+                idx = i
+            else:
+                break
+        return lines[idx]
+
+    def rank(item: tuple[int, int, str]) -> tuple[int, int, int]:
+        start, end, value = item
+        standalone = 1 if norm(line_at(start)) == norm(value) else 0
+        return (standalone, -start, end - start)
+
+    return max(matches, key=rank)[2]
 
 
 def years_in(text: str) -> list[str]:
@@ -1075,13 +1141,16 @@ Rules:
 - The author line may stand alone with no "vorgelegt von" / "written by". Still copy that name exactly.
 - If several universities appear, pick the awarding institution (letterhead), still copied verbatim.
 - If several years appear, YOU decide which is the publishing/submission year (not a start date, copyright, or cited work). Copy that year exactly.
-- degree_phrase MUST be copied character-for-character from COVER_TEXT AND be exactly one of these options: Bachelor-Thesis, Bachelorthesis, Bachelorarbeit, Bachelor Thesis, Bachelor's Thesis, Master-Thesis, Masterthesis, Masterarbeit, Master Thesis, Master's Thesis, Diplomarbeit, Diplom-Thesis, Diploma Thesis, Projektarbeit, Dissertation, Doktorarbeit, Doctoral Thesis, Promotionsarbeit, PhD Thesis, Ph.D. Thesis. If the cover shows a degree-programme name instead (e.g. "Bachelor of Arts", "Master of Science"), set degree_phrase to "" and pick degree_type. Do not rewrite it.
+- degree_phrase MUST be copied character-for-character from COVER_TEXT AND be exactly one of these options: __DEGREE_OPTIONS__. If the cover shows a degree-programme name instead (e.g. "Bachelor of Arts", "Master of Science"), set degree_phrase to "" and pick degree_type. Do not rewrite it.
 - If AVAILABLE_TEMPLATES is present, template MUST be copied exactly from that list (one filename). Pick the foil for the awarding university. Prefer the general university cover, not a Gymnasium, IHK, church, or partner school unless that body is clearly the issuer. Never pick a TITEL/TITLE file. If AVAILABLE_TEMPLATES is omitted, set template to "".
 - Do not fix spelling. Do not translate. Do not invent.
 - year must be a 4-digit year that appears in COVER_TEXT.
 - degree_type is only bachelor, master, dissertation, or unknown.
 - If a field is not present use "".
 """
+
+# Keep the model's menu in sync with DEGREE_ALLOWED automatically.
+SYSTEM = SYSTEM.replace("__DEGREE_OPTIONS__", _DEGREE_OPTIONS)
 
 TEMPLATE_SEARCH_SYSTEM = """You pick a foil-stamping cover template for a thesis.
 Reply with ONLY a JSON object, no markdown:
@@ -1399,7 +1468,9 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
             template_name = ""
 
     labels = cfg.get("degree_labels", {})
-    printed = model_phrase or allowed_degree_phrase(cover_text)
+    # The cover is ground truth. The model can latch onto a stray mention
+    # ("Diese Bachelorarbeit ...") while the kind line says something else.
+    printed = allowed_degree_phrase(cover_text) or model_phrase
     if printed:
         degree_text = printed
     else:
