@@ -679,7 +679,13 @@ def _full_template_name_in_blob(stem: str, cover_text: str) -> bool:
     """
     blob = norm(cover_text)
     filler = set(GENERIC_TEMPLATE_TOKENS) | {"th", "hs", "fh", "tu", "fh", "rwth", "hsh", "hdm"}
-    words = [w for w in re.split(r"[^\wäöüß]+", norm(stem)) if w and w not in filler]
+    # NOTE: \w includes "_", so an underscore in a template filename would
+    # otherwise glue words together ("siegen_universität") and never match
+    # the spaced cover text. Split on everything that is not a letter/digit.
+    words = [
+        w for w in re.split(r"[^a-zäöüß0-9]+", norm(stem))
+        if w and len(w) >= 2 and w not in filler
+    ]
     if not words:
         return False
     if all(
