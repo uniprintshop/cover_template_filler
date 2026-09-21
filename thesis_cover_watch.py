@@ -2218,7 +2218,12 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
 
         if write_title:
             _u, titled = find_template_pair(tpl.name, templates_dir)
-            if titled is not None:
+            if titled is not None and not fields.get("title"):
+                # Without a real title the foil would keep the "Titel"
+                # placeholder dummy — skip it and say why.
+                variant_errors.append(f"title ({titled.name}): skipped — no title extracted")
+                LOG.info("No title extracted — skipping TITLE variant %s", titled.name)
+            elif titled is not None:
                 title_base = output_base_name(fields)
                 if not single:
                     title_base = f"{title_base}_{safe_stem(titled.stem)}"
@@ -2230,7 +2235,7 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
                 except Exception as exc:
                     variant_errors.append(f"title ({titled.name}): {exc}")
                     LOG.exception("Failed to fill title template %s", titled)
-            else:
+            elif single:
                 variant_errors.append(f"no TITEL/TITLE sibling next to {tpl.name}")
                 LOG.info("No TITEL/TITLE sibling for family of %s", tpl.name)
 
