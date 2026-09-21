@@ -68,9 +68,11 @@
         "th köln",
         "technology arts sciences",
         "th koln",
-        "cologne institute of technology"
+        "cologne institute of technology",
+        "rheinische fachhochschule köln",
+        "rheinische hochschule köln"
       ],
-      "template": "Köln TH-Muster.upf"
+      "template": "TH_Köln.upf"
     },
     {
       "id": "iu",
@@ -80,7 +82,7 @@
         "iu internationale hochschule",
         "international university"
       ],
-      "template": "IU-Muster.upf"
+      "template": "IU_Internationale_Hochschule.upf"
     },
     {
       "id": "wuppertal",
@@ -88,7 +90,10 @@
         "universität wuppertal",
         "bergische universität wuppertal",
         "buw",
-        "wuppertal"
+        "wuppertal",
+        "wuppertal schwebebahn",
+        "din a5",
+        "schumpeter"
       ],
       "template": "Wuppertal_universität.upf"
     },
@@ -99,26 +104,30 @@
         "uni bremen",
         "bremen"
       ],
-      "template": "Bremen - Uni.upf"
+      "template": "Bremen_Universität.upf"
     },
     {
       "id": "hagen",
       "aliases": [
         "fernuniversität hagen",
         "fernuni hagen",
+        "fernuniversität in hagen",
         "hagen"
       ],
-      "template": "Hagen Fernuni.upf"
+      "template": "FernUniversität_Hagen.upf"
     },
     {
       "id": "dhbw-cas",
       "aliases": [
         "dhbw",
         "duale hochschule",
+        "cas",
         "center for advanced studies",
-        "cas"
+        "dhbw cas",
+        "duale hochschule baden württemberg",
+        "dhbw villingen schwenningen"
       ],
-      "template": "DHBW - CAS.upf"
+      "template": "DHBW_CAS.upf"
     },
     {
       "id": "duesseldorf-hwk",
@@ -127,7 +136,7 @@
         "hwk düsseldorf",
         "hwk duesseldorf"
       ],
-      "template": "Düsseldorf-HWK.upf"
+      "template": "Düsseldorf_HWK.upf"
     },
     {
       "id": "eu-fh",
@@ -136,7 +145,7 @@
         "eu fh",
         "eufh"
       ],
-      "template": "EU - FH.upf"
+      "template": "Europäische_FH.upf"
     },
     {
       "id": "hrw",
@@ -145,7 +154,7 @@
         "ruhr west",
         "hrw"
       ],
-      "template": "Hochschule Ruhr West.upf"
+      "template": "Hochschule_Ruhr-West.upf"
     },
     {
       "id": "iba",
@@ -162,15 +171,1126 @@
         "europaschule barmen",
         "barmen"
       ],
-      "template": "Barmen HS Europaschule.upf"
+      "template": "Barmen_Berufskolleg_Europaschule.upf"
     },
     {
       "id": "Münster-FH",
       "aliases": [
-        "Münster",
-        "Universität Münster"
+        "fh münster",
+        "fachhochschule münster",
+        "fh münster university of applied sciences"
       ],
       "template": "Münster-FH.upf"
+    },
+    {
+      "id": "rwth-aachen",
+      "aliases": [
+        "rwth aachen",
+        "rheinisch westfälische technische hochschule aachen",
+        "rwth aachen university"
+      ],
+      "template": "Aachen_RWTH_Rheinisch-Westfälische_Technische_Hochschule.upf"
+    },
+    {
+      "id": "aalen-hochschule",
+      "aliases": [
+        "hochschule aalen",
+        "aalen hochschule"
+      ],
+      "template": "Aalen_Hochschule.upf"
+    },
+    {
+      "id": "akademie-mode-design",
+      "aliases": [
+        "akademie mode und design",
+        "akademie mode & design",
+        "akademie für mode und design"
+      ],
+      "template": "Akademie_Mode_und_Design.upf"
+    },
+    {
+      "id": "alanus-hochschule",
+      "aliases": [
+        "alanus hochschule",
+        "alanus"
+      ],
+      "template": "Alanus_Hochschule.upf"
+    },
+    {
+      "id": "akkon-hochschule",
+      "aliases": [
+        "akkon hochschule",
+        "akkon",
+        "hochschule für humanwissenschaften"
+      ],
+      "template": "Akkon_Hochschule.upf"
+    },
+    {
+      "id": "anhalt-hochschule",
+      "aliases": [
+        "hochschule anhalt",
+        "anhalt hochschule",
+        "anhalt university of applied sciences"
+      ],
+      "template": "Anhalt_Hochschule.upf"
+    },
+    {
+      "id": "ansbach-hochschule",
+      "aliases": [
+        "hochschule ansbach",
+        "ansbach hochschule"
+      ],
+      "template": "Ansbach_Hochschule.upf"
+    },
+    {
+      "id": "augsburg-universität",
+      "aliases": [
+        "universität augsburg",
+        "uni augsburg"
+      ],
+      "template": "Augsburg_Universität.upf"
+    },
+    {
+      "id": "bamberg-universität",
+      "aliases": [
+        "universität bamberg",
+        "uni bamberg",
+        "otto friedrich universität bamberg"
+      ],
+      "template": "Bamberg_Universität.upf"
+    },
+    {
+      "id": "berufskolleg-elberfeld",
+      "aliases": [
+        "berufskolleg elberfeld"
+      ],
+      "template": "Berufskolleg_Elberfeld.upf"
+    },
+    {
+      "id": "berufskolleg-ennepetal",
+      "aliases": [
+        "berufskolleg ennepetal",
+        "berufskolleg ennepe ruhr kreise"
+      ],
+      "template": "Berufskolleg_Ennepetal.upf"
+    },
+    {
+      "id": "berufskolleg-kartäuserwall",
+      "aliases": [
+        "berufskolleg kartäuserwall",
+        "köln berufskolleg kartäuserwall"
+      ],
+      "template": "Köln_Berufskolleg_Kartäuserwall.upf"
+    },
+    {
+      "id": "berufskolleg-werther-brücke",
+      "aliases": [
+        "berufskolleg werther brücke",
+        "werther brücke"
+      ],
+      "template": "Berufskolleg_Werther_Brücke.upf"
+    },
+    {
+      "id": "bielefeld-fh",
+      "aliases": [
+        "fh bielefeld",
+        "hochschule bielefeld"
+      ],
+      "template": "FH_Bielefeld.upf"
+    },
+    {
+      "id": "fhm",
+      "aliases": [
+        "fachhochschule des mittelstands",
+        "fhm",
+        "fhm bielefeld"
+      ],
+      "template": "Bielefeld-FHM.upf"
+    },
+    {
+      "id": "bsc-brussels",
+      "aliases": [
+        "brussels study center",
+        "bsc brussels"
+      ],
+      "template": "BSC_Brussels_Study_Center.upf"
+    },
+    {
+      "id": "buckinghamshire",
+      "aliases": [
+        "buckinghamshire new university",
+        "buckinghamshire"
+      ],
+      "template": "Buckinghamshire_New_University.upf"
+    },
+    {
+      "id": "cbs",
+      "aliases": [
+        "cbs international business school",
+        "cbs"
+      ],
+      "template": "CBS_International_Business_School.upf"
+    },
+    {
+      "id": "carl-remigius",
+      "aliases": [
+        "carl remigius",
+        "carl remigius medical school"
+      ],
+      "template": "Carl_Remigius.upf"
+    },
+    {
+      "id": "carl-fuhlrott-gymnasium",
+      "aliases": [
+        "carl fuhlrott gymnasium wuppertal",
+        "carl fuhlrott gymnasium"
+      ],
+      "template": "Carl-Fuhlrott-Gymnasium_Wuppertal.upf"
+    },
+    {
+      "id": "dachdecker-meister",
+      "aliases": [
+        "dachdecker handwerk",
+        "dachdecker"
+      ],
+      "template": "Dachdecker_Meistermappe.upf"
+    },
+    {
+      "id": "darmstadt-evangelische-hochschule",
+      "aliases": [
+        "evangelische hochschule darmstadt",
+        "ehd darmstadt"
+      ],
+      "template": "Darmstadt_Evangelische_Hochschule.upf"
+    },
+    {
+      "id": "dhpol",
+      "aliases": [
+        "deutsche hochschule der polizei",
+        "hochschule der polizei",
+        "dhpol"
+      ],
+      "template": "Deutsche_Hochschule_der_Polizei.upf"
+    },
+    {
+      "id": "diploma-hochschule",
+      "aliases": [
+        "diploma hochschule",
+        "diploma uni"
+      ],
+      "template": "Diploma_Hochschule.upf"
+    },
+    {
+      "id": "döpfer-hochschule",
+      "aliases": [
+        "döpfer hochschule",
+        "döpfer",
+        "hochschule döpfer",
+        "döpfer köln"
+      ],
+      "template": "Döpfer_Hochschule.upf"
+    },
+    {
+      "id": "tu-dortmund",
+      "aliases": [
+        "tu dortmund",
+        "technische universität dortmund"
+      ],
+      "template": "TU_Dortmund.upf"
+    },
+    {
+      "id": "dortmund-fh",
+      "aliases": [
+        "fachhochschule dortmund",
+        "fh dortmund"
+      ],
+      "template": "Dortmund_Fachhochschule.upf"
+    },
+    {
+      "id": "dresden-diu",
+      "aliases": [
+        "dresden international university",
+        "diu dresden",
+        "diu"
+      ],
+      "template": "Dresden_DIU.upf"
+    },
+    {
+      "id": "duisburg-essen",
+      "aliases": [
+        "universität duisburg essen",
+        "uni duisburg essen",
+        "duisburg essen",
+        "ude"
+      ],
+      "template": "Duisburg_Essen_Universität.upf"
+    },
+    {
+      "id": "hhu",
+      "aliases": [
+        "heinrich heine universität",
+        "hhu",
+        "universität düsseldorf"
+      ],
+      "template": "Düsseldorf_hhu_Heinrich_Heine_Universität.upf"
+    },
+    {
+      "id": "hsd",
+      "aliases": [
+        "hochschule düsseldorf",
+        "hsd"
+      ],
+      "template": "Düsseldorf_HSD_Hochschule_Düsseldorf.upf"
+    },
+    {
+      "id": "robert-schumann",
+      "aliases": [
+        "robert schumann hochschule",
+        "robert schumann musikhochschule",
+        "rsh düsseldorf"
+      ],
+      "template": "Düsseldorf_Robert-Schumann-Hochschule.upf"
+    },
+    {
+      "id": "ebz",
+      "aliases": [
+        "ebz business school",
+        "ebz"
+      ],
+      "template": "EBZ_Business_School.upf"
+    },
+    {
+      "id": "uni-koeln",
+      "aliases": [
+        "universität zu köln",
+        "uni köln",
+        "zu köln",
+        "universität köln"
+      ],
+      "template": "Universität_zu_köln.upf"
+    },
+    {
+      "id": "erfurt-universität",
+      "aliases": [
+        "universität erfurt",
+        "uni erfurt"
+      ],
+      "template": "Erfurt_Universität.upf"
+    },
+    {
+      "id": "hochschule-esslingen",
+      "aliases": [
+        "hochschule esslingen",
+        "esslingen hochschule",
+        "hochschule esslingen bilstein"
+      ],
+      "template": "Hochschule_Esslingen.upf"
+    },
+    {
+      "id": "fau",
+      "aliases": [
+        "friedrich alexander universität",
+        "fau",
+        "universität erlangen nürnberg",
+        "fau erlangen nürnberg"
+      ],
+      "template": "FAU_Friedrich-Alexander-Universität.upf"
+    },
+    {
+      "id": "fliedner-fh",
+      "aliases": [
+        "fliedner fachhochschule",
+        "fliedner"
+      ],
+      "template": "Düsseldorf_Fliedner_FH.upf"
+    },
+    {
+      "id": "fom",
+      "aliases": [
+        "fom",
+        "hochschule für ökonomie und management",
+        "fom hochschule"
+      ],
+      "template": "FOM_hochschule.upf"
+    },
+    {
+      "id": "fh-diakonie",
+      "aliases": [
+        "fachhochschule der diakonie",
+        "fhdd"
+      ],
+      "template": "Fachhochschule_der_Diakonie.upf"
+    },
+    {
+      "id": "fhdw",
+      "aliases": [
+        "fachhochschule der wirtschaft",
+        "fhdw"
+      ],
+      "template": "FHDW.upf"
+    },
+    {
+      "id": "foev-nrw",
+      "aliases": [
+        "fachhochschule für öffentliche verwaltung nrw",
+        "föv nrw",
+        "fh föv nrw"
+      ],
+      "template": "FH_föV_NRW.upf"
+    },
+    {
+      "id": "flensburg-hochschule",
+      "aliases": [
+        "hochschule flensburg",
+        "flensburg hochschule",
+        "flensburg"
+      ],
+      "template": "Flensburg_Hochschule.upf"
+    },
+    {
+      "id": "geisenheim-hochschule",
+      "aliases": [
+        "hochschule geisenheim",
+        "geisenheim university",
+        "geisenheim"
+      ],
+      "template": "Geisenheim_Hochschule.upf"
+    },
+    {
+      "id": "göttingen",
+      "aliases": [
+        "georg august universität göttingen",
+        "universität göttingen",
+        "uni göttingen"
+      ],
+      "template": "Göttingen_Georg-August-Universität.upf"
+    },
+    {
+      "id": "gkv-informatik",
+      "aliases": [
+        "gkv informatik",
+        "gkv"
+      ],
+      "template": "gkv_informatik.upf"
+    },
+    {
+      "id": "hamburg-fern-hochschule",
+      "aliases": [
+        "hamburger fern hochschule",
+        "hamburg fern hochschule",
+        "fern hs hamburg"
+      ],
+      "template": "Hamburg_Fern-Hochschule.upf"
+    },
+    {
+      "id": "hamburger-konservatorium",
+      "aliases": [
+        "hamburger konservatorium",
+        "konservatorium hamburg"
+      ],
+      "template": "Hamburger_Konservatorium.upf"
+    },
+    {
+      "id": "hamm-lippstadt",
+      "aliases": [
+        "hochschule hamm lippstadt",
+        "hamm lippstadt"
+      ],
+      "template": "Hamm-Lippstadt_Hochschule.upf"
+    },
+    {
+      "id": "hfin-nrw",
+      "aliases": [
+        "hochschule für finanzen nrw",
+        "finanzhochschule nrw",
+        "hochschule für finanzen",
+        "hochschule für finanzen nordkirchen",
+        "hochschule für finanzen nrw siegel"
+      ],
+      "template": "Hochschule_für_Finanzen_NRW.upf"
+    },
+    {
+      "id": "heidelberg",
+      "aliases": [
+        "universität heidelberg",
+        "uni heidelberg",
+        "ruprecht karls universität heidelberg"
+      ],
+      "template": "Heidelberg_Universität.upf"
+    },
+    {
+      "id": "hochschule-bonn-rhein-sieg",
+      "aliases": [
+        "hochschule bonn rhein sieg",
+        "hochschule bonn-rhein-sieg"
+      ],
+      "template": "Hochschule_Bonn-Rhein-Sieg.upf"
+    },
+    {
+      "id": "hochschule-hof",
+      "aliases": [
+        "hochschule hof",
+        "hs hof"
+      ],
+      "template": "Hochschule_Hof.upf"
+    },
+    {
+      "id": "hspv-nrw",
+      "aliases": [
+        "hspv nrw",
+        "hochschule für polizei und öffentliche verwaltung nrw",
+        "hspv",
+        "aspv"
+      ],
+      "template": "HSPV_NRW.upf"
+    },
+    {
+      "id": "hs-bund",
+      "aliases": [
+        "hochschule des bundes für öffentliche verwaltung",
+        "hochschule des bundes",
+        "hs bund"
+      ],
+      "template": "Hochschule_des_Bundes.upf"
+    },
+    {
+      "id": "htwk",
+      "aliases": [
+        "htwk",
+        "hochschule für technik wirtschaft und kultur",
+        "htwk leipzig"
+      ],
+      "template": "HTWK.upf"
+    },
+    {
+      "id": "htw-saar",
+      "aliases": [
+        "htw saar",
+        "hochschule für technik und wirtschaft des saarlandes",
+        "saarbrücken"
+      ],
+      "template": "htw_saar.upf"
+    },
+    {
+      "id": "ilmenau",
+      "aliases": [
+        "technische universität ilmenau",
+        "tu ilmenau",
+        "ilmenau"
+      ],
+      "template": "Ilmenau_Technische_Universität.upf"
+    },
+    {
+      "id": "ism",
+      "aliases": [
+        "international school of management",
+        "ism"
+      ],
+      "template": "ISM_1.upf"
+    },
+    {
+      "id": "jade-hochschule",
+      "aliases": [
+        "jade hochschule",
+        "jadehochschule",
+        "jade universität"
+      ],
+      "template": "JADE-Hochschule.upf"
+    },
+    {
+      "id": "jena",
+      "aliases": [
+        "friedrich schiller universität jena",
+        "universität jena",
+        "uni jena"
+      ],
+      "template": "Jena_Universität.upf"
+    },
+    {
+      "id": "kassel",
+      "aliases": [
+        "universität kassel",
+        "uni kassel"
+      ],
+      "template": "Kassel_Universität.upf"
+    },
+    {
+      "id": "katho-nrw",
+      "aliases": [
+        "katholische hochschule nrw",
+        "katho nrw",
+        "katho"
+      ],
+      "template": "Katho_NRW.upf"
+    },
+    {
+      "id": "kiel",
+      "aliases": [
+        "christian albrechts universität kiel",
+        "universität kiel",
+        "uni kiel",
+        "cau kiel"
+      ],
+      "template": "Kiel_Universität.upf"
+    },
+    {
+      "id": "kirchliche-hochschule-wuppertal",
+      "aliases": [
+        "kirchliche hochschule wuppertal",
+        "kirchliche hochschule"
+      ],
+      "template": "Kirchliche_Hochschule_Wuppertal.upf"
+    },
+    {
+      "id": "koblenz",
+      "aliases": [
+        "universität koblenz",
+        "uni koblenz",
+        "universität koblenz landau",
+        "koblenz landau"
+      ],
+      "template": "Koblenz_Universität.upf"
+    },
+    {
+      "id": "konstanz",
+      "aliases": [
+        "universität konstanz",
+        "uni konstanz"
+      ],
+      "template": "Konstanz_Universität.upf"
+    },
+    {
+      "id": "musik-und-tanz-köln",
+      "aliases": [
+        "hochschule für musik und tanz köln",
+        "musikhochschule köln",
+        "hochschule für musik und tanz"
+      ],
+      "template": "Köln_Hochschule_für_Musik_und_Tanz.upf"
+    },
+    {
+      "id": "leuphana",
+      "aliases": [
+        "leuphana",
+        "leuphana universität lüneburg",
+        "leuphana universität"
+      ],
+      "template": "LEUPHANA-Lüneburg.upf"
+    },
+    {
+      "id": "leipzig",
+      "aliases": [
+        "universität leipzig",
+        "uni leipzig"
+      ],
+      "template": "Leipzig_Universität.upf"
+    },
+    {
+      "id": "lmu",
+      "aliases": [
+        "ludwig maximilians universität münchen",
+        "lmu",
+        "lmu münchen"
+      ],
+      "template": "München_LMU.upf"
+    },
+    {
+      "id": "ludwigshafen",
+      "aliases": [
+        "hochschule ludwigshafen",
+        "ludwigshafen hochschule"
+      ],
+      "template": "Ludwigshafen_Hochschule.upf"
+    },
+    {
+      "id": "lübeck",
+      "aliases": [
+        "universität zu lübeck",
+        "universität lübeck",
+        "uni lübeck"
+      ],
+      "template": "Lübeck_Universität.upf"
+    },
+    {
+      "id": "maastricht",
+      "aliases": [
+        "maastricht university",
+        "universität maastricht",
+        "maastricht"
+      ],
+      "template": "Maastricht_Universität.upf"
+    },
+    {
+      "id": "magdeburg-universität",
+      "aliases": [
+        "otto von guericke universität magdeburg",
+        "universität magdeburg",
+        "uni magdeburg"
+      ],
+      "template": "Magdeburg_Universität.upf"
+    },
+    {
+      "id": "magdeburg-hochschule",
+      "aliases": [
+        "hochschule magdeburg stendal",
+        "magdeburg stendal",
+        "hochschule magdeburg"
+      ],
+      "template": "Magdeburg_Hochschule.upf"
+    },
+    {
+      "id": "mannheim-universität",
+      "aliases": [
+        "universität mannheim",
+        "uni mannheim",
+        "mannheim university"
+      ],
+      "template": "Mannheim-Universität.upf"
+    },
+    {
+      "id": "mannheim-hochschule",
+      "aliases": [
+        "hochschule mannheim",
+        "mannheim hochschule"
+      ],
+      "template": "Mannheim_Hochschule.upf"
+    },
+    {
+      "id": "marburg",
+      "aliases": [
+        "philipps universität marburg",
+        "universität marburg",
+        "uni marburg"
+      ],
+      "template": "Marburg_Universität.upf"
+    },
+    {
+      "id": "mediadesign",
+      "aliases": [
+        "mediadesign hochschule",
+        "mediadesign"
+      ],
+      "template": "Mediadesign_Hochschule.upf"
+    },
+    {
+      "id": "medical-school-chirurgia",
+      "aliases": [
+        "medical school academia chirurgia",
+        "academia chirurgia"
+      ],
+      "template": "Medical_School_Academia_Chirurgia.upf"
+    },
+    {
+      "id": "mittweida",
+      "aliases": [
+        "hochschule mittweida",
+        "mittweida"
+      ],
+      "template": "Mittweida_Hochschule.upf"
+    },
+    {
+      "id": "uni-münster",
+      "aliases": [
+        "universität münster",
+        "westfälische wilhelms universität münster",
+        "uni münster"
+      ],
+      "template": "Münster_Universität.upf"
+    },
+    {
+      "id": "hochschule-niederrhein",
+      "aliases": [
+        "hochschule niederrhein",
+        "hs niederrhein"
+      ],
+      "template": "Hochschule_Niederrhein.upf"
+    },
+    {
+      "id": "offenburg",
+      "aliases": [
+        "hochschule offenburg",
+        "offenburg hochschule"
+      ],
+      "template": "Offenburg_Hochschule.upf"
+    },
+    {
+      "id": "oldenburg",
+      "aliases": [
+        "carl von ossietzky universität oldenburg",
+        "universität oldenburg",
+        "uni oldenburg",
+        "oldenburg"
+      ],
+      "template": "Oldenburg_Carl-von-Ossietzky_Universität.upf"
+    },
+    {
+      "id": "osnabrück-hochschule",
+      "aliases": [
+        "hochschule osnabrück",
+        "osnabrück hochschule"
+      ],
+      "template": "Osnabrück_Hochschule.upf"
+    },
+    {
+      "id": "osnabrück-universität",
+      "aliases": [
+        "universität osnabrück",
+        "uni osnabrück"
+      ],
+      "template": "Osnabrück_Universität.upf"
+    },
+    {
+      "id": "ostfalia",
+      "aliases": [
+        "ostfalia",
+        "ostfalia hochschule für angewandte wissenschaften"
+      ],
+      "template": "Ostfalia_Hochschule.upf"
+    },
+    {
+      "id": "th-owl",
+      "aliases": [
+        "th owl",
+        "technische hochschule ostwestfalen lippe",
+        "th ostwestfalen lippe",
+        "ostwestfalen lippe"
+      ],
+      "template": "Ostwestfalen-Lippe_TH.upf"
+    },
+    {
+      "id": "paderborn",
+      "aliases": [
+        "universität paderborn",
+        "uni paderborn"
+      ],
+      "template": "Paderborn_Universität.upf"
+    },
+    {
+      "id": "passau",
+      "aliases": [
+        "universität passau",
+        "uni passau"
+      ],
+      "template": "Passau_Universität.upf"
+    },
+    {
+      "id": "pforzheim",
+      "aliases": [
+        "hochschule pforzheim",
+        "pforzheim hochschule"
+      ],
+      "template": "Pforzheim_Hochschule.upf"
+    },
+    {
+      "id": "polizei-sachsen-anhalt",
+      "aliases": [
+        "hochschule der polizei sachsen anhalt",
+        "polizei sachsen anhalt"
+      ],
+      "template": "Polizei_Sachsen-Anhalt_Hochschule.upf"
+    },
+    {
+      "id": "potsdam",
+      "aliases": [
+        "universität potsdam",
+        "uni potsdam"
+      ],
+      "template": "Potsdam_Universität.upf"
+    },
+    {
+      "id": "rhein-waal",
+      "aliases": [
+        "hochschule rhein waal",
+        "rhine waal university",
+        "rhein waal"
+      ],
+      "template": "Rhein_Waal_Hochschule.upf"
+    },
+    {
+      "id": "rub",
+      "aliases": [
+        "ruhr universität",
+        "rub",
+        "isse industrial sales and service engineering",
+        "isse"
+      ],
+      "template": "RUB_Ruhr-Universität.upf"
+    },
+    {
+      "id": "bochum-hochschule",
+      "aliases": [
+        "hochschule bochum",
+        "bochum hochschule",
+        "bochum university of applied sciences",
+        "campus velbert"
+      ],
+      "template": "Bochum_Hochschule.upf"
+    },
+    {
+      "id": "bochum-evh",
+      "aliases": [
+        "evangelische hochschule rheinland westfalen lippe",
+        "evh bochum",
+        "evangelische hochschule bochum"
+      ],
+      "template": "Bochum_EVH_Evangelische_Hochschule.upf"
+    },
+    {
+      "id": "thga",
+      "aliases": [
+        "technische hochschule georg agricola",
+        "thga",
+        "georg agricola"
+      ],
+      "template": "Bochum_THGA.upf"
+    },
+    {
+      "id": "rudolf-steiner-schule",
+      "aliases": [
+        "rudolf steiner schule wuppertal",
+        "rudolf steiner schule"
+      ],
+      "template": "Rudolf_Steiner_Schule.upf"
+    },
+    {
+      "id": "saarland",
+      "aliases": [
+        "universität des saarlandes",
+        "uni saarland"
+      ],
+      "template": "Universität_des_Saarlandes.upf"
+    },
+    {
+      "id": "groningen",
+      "aliases": [
+        "rijksuniversiteit groningen",
+        "universität groningen",
+        "university of groningen"
+      ],
+      "template": "Universität_Groningen.upf"
+    },
+    {
+      "id": "siegen",
+      "aliases": [
+        "universität siegen",
+        "uni siegen"
+      ],
+      "template": "Siegen_Universität.upf"
+    },
+    {
+      "id": "srh",
+      "aliases": [
+        "srh",
+        "srh hochschule",
+        "srh fernhochschule",
+        "the mobile university"
+      ],
+      "template": "SRH_Hochschule.upf"
+    },
+    {
+      "id": "kosice",
+      "aliases": [
+        "technical university of kosice",
+        "universität košice",
+        "universität kosice"
+      ],
+      "template": "Technical_Universität_of_Košice.upf"
+    },
+    {
+      "id": "chemnitz",
+      "aliases": [
+        "technische universität chemnitz",
+        "tu chemnitz"
+      ],
+      "template": "Chemnitz_Technische_Universität.upf"
+    },
+    {
+      "id": "taw",
+      "aliases": [
+        "technische akademie wuppertal",
+        "taw"
+      ],
+      "template": "TAW.upf"
+    },
+    {
+      "id": "thws",
+      "aliases": [
+        "thws",
+        "technische hochschule würzburg schweinfurt",
+        "technical university of applied sciences würzburg schweinfurt"
+      ],
+      "template": "THWS.upf"
+    },
+    {
+      "id": "trier-hochschule",
+      "aliases": [
+        "hochschule trier",
+        "trier hochschule"
+      ],
+      "template": "Trier_Hochschule.upf"
+    },
+    {
+      "id": "trier-universität",
+      "aliases": [
+        "universität trier",
+        "uni trier"
+      ],
+      "template": "Trier_Universität.upf"
+    },
+    {
+      "id": "tu-dresden",
+      "aliases": [
+        "tu dresden",
+        "technische universität dresden"
+      ],
+      "template": "TU_Dresden.upf"
+    },
+    {
+      "id": "hohenheim",
+      "aliases": [
+        "universität hohenheim",
+        "uni hohenheim",
+        "hohenheim"
+      ],
+      "template": "Hohenheim_Universität.upf"
+    },
+    {
+      "id": "wien",
+      "aliases": [
+        "universität wien",
+        "uni wien"
+      ],
+      "template": "Wien_Universität.upf"
+    },
+    {
+      "id": "university-of-europe",
+      "aliases": [
+        "university of europe",
+        "university of europe for applied sciences"
+      ],
+      "template": "University_of_Europe.upf"
+    },
+    {
+      "id": "waldorf-institut-witten",
+      "aliases": [
+        "waldorf institut witten",
+        "waldorf institut"
+      ],
+      "template": "Waldorf_Institut_Witten.upf"
+    },
+    {
+      "id": "westfälische-hochschule",
+      "aliases": [
+        "westfälische hochschule",
+        "westfälische hochschule gelsenkirchen bocholt recklinghausen",
+        "wh gelsenkirchen"
+      ],
+      "template": "Westfälische_Hochschule_Gelsenkirchen.upf"
+    },
+    {
+      "id": "wilhelm-büchner",
+      "aliases": [
+        "wilhelm büchner hochschule",
+        "wilhelm büchner"
+      ],
+      "template": "Wilhelm-Büchner_Hochschule.upf"
+    },
+    {
+      "id": "wilhelmshaven-berufsakademie",
+      "aliases": [
+        "berufsakademie wilhelmshaven",
+        "wilhelmshaven berufsakademie"
+      ],
+      "template": "Wilhelmshaven-BerufsAkademie.upf"
+    },
+    {
+      "id": "wismar",
+      "aliases": [
+        "hochschule wismar",
+        "wismar hochschule",
+        "wismar"
+      ],
+      "template": "Wismar_Hochschule.upf"
+    },
+    {
+      "id": "witten-herdecke",
+      "aliases": [
+        "universität witten herdecke",
+        "witten herdecke",
+        "uni witten herdecke"
+      ],
+      "template": "Witten-Herdecke_Universität.upf"
+    },
+    {
+      "id": "zuyd",
+      "aliases": [
+        "zuyd",
+        "zuyd hogeschool",
+        "zuyd niederlande"
+      ],
+      "template": "ZUYD-Niederlande.upf"
+    },
+    {
+      "id": "zeppelin",
+      "aliases": [
+        "zeppelin universität",
+        "zeppelin"
+      ],
+      "template": "Zeppelin_Universität.upf"
+    },
+    {
+      "id": "ist-hochschule",
+      "aliases": [
+        "ist hochschule für management",
+        "ist hochschule",
+        "ist hochschule düsseldorf",
+        "ist hochschule duesseldorf"
+      ],
+      "template": "IST_Hochschule_für_Management.upf"
+    },
+    {
+      "id": "bergische-ihk",
+      "aliases": [
+        "bergische ihk",
+        "bergische industrie und handelskammer",
+        "ihk barmer",
+        "ihk barmen"
+      ],
+      "template": "Bergische_IHK.upf"
+    },
+    {
+      "id": "ihk-dortmund",
+      "aliases": [
+        "ihk dortmund",
+        "ihk zu dortmund"
+      ],
+      "template": "IHK_Dortmund.upf"
+    },
+    {
+      "id": "südwestfalen",
+      "aliases": [
+        "fachhochschule südwestfalen",
+        "fh südwestfalen",
+        "südwestfalen"
+      ],
+      "template": "Fachhochschule_Südwestfalen.upf"
+    },
+    {
+      "id": "giessen",
+      "aliases": [
+        "justus liebig universität gießen",
+        "universität gießen",
+        "uni gießen"
+      ],
+      "template": "Gießen_Universität.upf"
+    },
+    {
+      "id": "neubrandenburg",
+      "aliases": [
+        "hochschule neubrandenburg",
+        "neubrandenburg"
+      ],
+      "template": "Neubrandenburg_Hochschule.upf"
     }
   ]
 }

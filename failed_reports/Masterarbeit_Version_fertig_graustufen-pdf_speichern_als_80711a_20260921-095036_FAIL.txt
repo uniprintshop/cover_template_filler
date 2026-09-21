@@ -1,0 +1,65 @@
+FAIL  Masterarbeit_Version_fertig_graustufen-pdf_speichern_als_80711a.pdf
+time  20260921-095036
+error RuntimeError: No university alias on pages 1–2. Model said 'Universität Siegen' (ignored because it is not on the cover). Add aliases or put the school name on the PDF.
+
+--- extracted ---
+{
+  "university_id": "Siegen",
+  "university_template": "Siegen_Universität.upf",
+  "university_raw": "Universität Siegen",
+  "university_matches": [],
+  "author": "Sophie Ortlepp",
+  "title": "",
+  "degree_text": "Masterarbeit",
+  "year": "2026",
+  "risks": [
+    "author_from_model_span",
+    "no_university_on_cover",
+    "weak_template_filename_ignored",
+    "no_template_on_cover",
+    "template_found_by_model_search",
+    "template_learned"
+  ],
+  "ok_to_stamp": false,
+  "model_raw": {
+    "university": "Universität Siegen",
+    "author": "Sophie Ortlepp",
+    "title": "Konzeption und Operationalisierung eines Reifegradmodells zur Erfassung des Digitalisierungsgrades in der kas- senärztlichen Versorgung - eine methodische Modellkon- struktion am Beispiel Nordrhein",
+    "degree_phrase": "Masterarbeit",
+    "degree_type": "master",
+    "year": "2026",
+    "template": ""
+  }
+}
+
+--- model report ---
+Fehlerbericht – Foliotempel für Deckel
+
+Keine Deckel wurde produziert, weil auf den Seiten 1–2 kein Universitätsschreibweise gefunden wurde. Das Modell hat „Universität Siegen" erwartet, aber diese Formulierung steht nicht auf dem Deckel. Die Vorlage „Siegen_Universität.upf" wurde deshalb ignoriert und es gab keine Vorlage auf dem Deckel.
+
+Was auf den Seiten gefunden wurde: Der Deckel enthält „Universität Siegen" nur in der Fußzeile als „Universitat u legen" (vermutlich OCR-Fehler für „Universität Siegen"). Der Name ist also vorhanden, aber nicht maschinenlesbar sauber. Titel, Autorin (Sophie Ortlepp), Grad (Masterarbeit) und Jahr (2026) sind korrekt extrahiert.
+
+Was ein Mensch prüfen sollte: Ob die Fußzeile „Universitat u legen" tatsächlich „Universität Siegen" ist und warum die Vorlage nicht erkannt wurde. Falls nötig, die Vorlage manuell zuordnen oder die Fußzeile auf dem Deckel nachdrucken.
+
+--- cover text (truncated) ---
+Universität Siegen
+Erstgutachter: Prof. Dr. Christoph Dockweiler
+Zweitgutachterin: Dr. Joanna Albrecht
+Masterarbeit
+zum Thema:
+Konzeption und Operationalisierung eines Reifegradmo-
+dells zur Erfassung des Digitalisierungsgrades in der kas-
+senärztlichen Versorgung - eine methodische Modellkon-
+struktion am Beispiel Nordrhein
+Abgabedatum: 21.09.2026
+Zur Erlangung des akademischen Grades:
+Master of Science Digital Public Health
+an der Philosophischen Fakultät der Universität Siegen
+Name: Sophie Ortlepp
+E-Mail: Sophie.ortlepp@student.uni-siegen.de /
+sophieortlepp@aol.com
+Telefonnummer: +49 17662918424
+Matrikelnummer: 1854466
+
+Philosophische phil Fakultat
+Universitat u legen
