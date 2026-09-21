@@ -1,0 +1,63 @@
+FAIL  Thesis Aouaou Ismail 2329096_graustufen-pdf_speichern_als_9040ff.pdf
+time  20260921-134243
+error RuntimeError: No university alias on pages 1–2. Model said '' (ignored because it is not on the cover). Add aliases or put the school name on the PDF.
+
+--- extracted ---
+{
+  "university_id": "",
+  "university_template": "",
+  "university_raw": "",
+  "university_matches": [],
+  "author": "Ismail Aouaou",
+  "title": "",
+  "degree_text": "Masterthesis",
+  "year": "2026",
+  "risks": [
+    "no_university_on_cover",
+    "weak_template_filename_ignored",
+    "ambiguous_template:2"
+  ],
+  "ok_to_stamp": false,
+  "model_raw": {
+    "university": "",
+    "author": "Ismail Aouaou",
+    "title": "Prädiktive Instandhaltung und Zuverlässigkeit in der Industrie 4.0: KI-gestützte Analyse von Motorenausfällen durch die Methode „Mixture of Experts“ für die Qualitätssicherung.",
+    "degree_phrase": "Masterthesis",
+    "degree_type": "master",
+    "year": "2026",
+    "template": ""
+  }
+}
+
+--- model report ---
+Foil-stamp failed: no cover was produced because the university alias is missing. The model returned an empty university_id, and the only school name on the PDF ("Fakultät für Maschinenbau und Sicherheitstechnik") is not in the alias list, so the template filename was ignored.
+
+On pages 1–2 the cover shows the faculty name, degree (Masterthesis / Master of Science), author Ismail Aouaou, and supervisors, but no university alias string. The extractors also flagged an ambiguous template match.
+
+A human should check the alias table for the correct university key and add it, or place the full school name on the PDF. Until then the cover cannot be stamped.
+
+--- cover text (truncated) ---
+Fakultät für Maschinenbau und Sicherheitstechnik
+Masterthesis
+im Studiengang Qualitäts- und
+Zuverlässigkeitsingenieurwesen
+beim Fachgebiet für Verkehrssicherheit und Zuverlässigkeit
+zur Erreichung des akademischen Grades
+Master of Science
+Thema: Prädiktive Instandhaltung und Zuverlässig-
+keit in der Industrie 4.0: KI-gestützte Analy-
+se von Motorenausfällen durch die Methode
+„Mixture of Experts“ für die Qualitätssiche-
+rung.
+Autor: Ismail Aouaou
+MatNr: 2329096
+Bearbeitungszeitraum: 23.April 2026 bis 02.September 2026
+Betreuer: Herr Prof. Dr. Tordeux, Antoine
+Erstprüfer: Herr Prof. Dr. Tordeux, Antoine
+Zweitprüferin: Frau Basma Khelfa, M.Sc.
+
+Eidesstattliche Versicherung
+Jede Abschlussarbeit muss eine eidesstattliche Versicherung enthalten, in der Sie ver-
+sichern, die Arbeit selbstständig und unter Verwendung der angegebenen Quellen und
+Hilfsmittel angefertigt zu haben (Siehe Anhang B).
+I
