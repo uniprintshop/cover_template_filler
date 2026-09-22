@@ -425,6 +425,20 @@ DEGREE_ALLOWED = [
 # Prompt menu, derived so a new entry never has to be duplicated by hand.
 _DEGREE_OPTIONS = ", ".join(DEGREE_ALLOWED)
 
+# Degree-agnostic final-thesis wordings: they name the kind without naming
+# the degree. When the degree type is known (bachelor/master/dissertation),
+# the configured degree label is stamped instead of the vague word.
+DEGREE_AGNOSTIC = {
+    norm(w)
+    for w in (
+        "Thesis",
+        "Abschlussarbeit",
+        "Abschlussarbeiten",
+        "Wissenschaftliche Abschlussarbeit",
+        "Wissenschaftliche Abschlussarbeiten",
+    )
+}
+
 _ALLOWED_DEGREE_KEYS = {norm(p): p for p in DEGREE_ALLOWED}
 _ALLOWED_DEGREE_RES = [
     re.compile(
@@ -1478,7 +1492,14 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
     # ("Diese Bachelorarbeit ...") while the kind line says something else.
     printed = allowed_degree_phrase(cover_text) or model_phrase
     if printed:
-        degree_text = printed
+        if norm(printed) in DEGREE_AGNOSTIC and dt in labels and dt != "unknown":
+            # The cover says only "Thesis"/"Abschlussarbeit" but the degree is
+            # known (e.g. "Bachelor of Arts" beneath it): stamp the concrete
+            # degree label instead of the vague word.
+            degree_text = labels[dt]
+            risks.append("degree_agnostic_wording_degree_inferred")
+        else:
+            degree_text = printed
     else:
         degree_text = labels.get(dt, labels.get("unknown", "Thesis"))
         risks.append("degree_inferred_not_on_cover")
