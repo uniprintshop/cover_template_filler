@@ -52,6 +52,7 @@
   },
   "model": {
     "backend": "ollama",
+    "think": false,
     "name": "ornith-1.5:9b",
     "num_ctx": 8192,
     "keep_alive": "24h",
