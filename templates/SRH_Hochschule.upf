@@ -1,0 +1,840 @@
+#UPFVERSION:1.4
+OR_VERTICALSPINE
+template_1A
+Object:template1A
+{
+	UniCover Hard A4 Portrait M,type_1A,3590.55118110236,2362.20472440945,2362.20472440945,0,236.220472440945,0,224.409448818898,224.409448818898,224.409448818898,224.409448818898,224.409448818898,35.4330708661417,224.409448818898,35.4330708661417,224.409448818898,224.409448818898,224.409448818898,224.409448818898,CARDBOARD,HARD
+}
+Object:AvailablePrintArea
+{
+3590,4960,10,10,DarkBlue,A-Metallic Gold
+	Object:AvailablePrintAreaSide
+	{
+		3142,1914,Front,2822,224
+		1
+			Object:Layer
+			{
+				A-Metallic Gold,AMetallicGold,255,255,215,0,0,True,True,True,DarkBlue
+				3
+				Object:PrintArea
+				{
+					672,1914,0,339
+					1
+					Object:ImageDesignElement
+					{
+						321,16,1272,268,False,0,False,0,0,False,True,0
+						Object:Image:5056
+						{
+iVBORw0KGgoAAAANSUhEUgAAAegAAABnCAYAAADLwdG1AAAABGdBTUEAALGPC/xhBQAAAAlwSFlzAAAOvAAADrwBlbxySQAADnJJREFUeF7t1eGKrjgQhOFz/ze9iz+E8JKudDTpT516oFiwK4k5Mzv++2c7/Yf/mpmZ2QMcH+ZszMzMrAg/wipmZmZWhB9hFTMzMyvCj7CKmZmZFeFHWMXMzMyK8COsYmZmZkX4EVYxMzOzIvwIq5iZmVkRfoRVzMzMrAg/wipmZmZWhB9hFTMzMyvCj7CKmZmZFeFHWMXMzMyK8COsYmZmZkX4EVYxMzOzIvwIq5iZmVkRfoRVzMzMrAg/wipmZmZWhB9hFTMzMyvCj7CKmZmZFeFHWMXMzMyK8COsYmZmZkX4EVYxMzOzIvwIq5iZmVkRfoRVzMzMrAg/wipmZmZWhB9hFbMZX/n9edI9nvQuhye8g/0R/OV/0v8EvazAPVVG2M/kr+H9Z/4NuG5m7S+86V2VJ93jKe/C9/jlu9hH8RcsSjWeH2UF7qkywv5s/gLeeebeXDez9hfe9K7Kk+7xlHfhe/zyXexj+Is1ShWeO8oK3FNlhP2r+TLedea+XDez9hfe9K7Kk+7xlHfhe/zyXewj+AuVzW48L5sVuKfKCPt38lW858xduW5m7S+86V2VJ93jKe/C9/jlu9gH8JdpJjvxrJmswD1VRti/my/iHWfuyXUza3/hTe+qPOkeT3qXwxPewV6Ov9Sz2YXnzGYF7qkywv6KfA3vN3NHrptZ+wtvelflSfd40ruY3cZf6CvZgWdcyQrcU2WE/VX5Et5t5n5cl1nL/szaFtdm9ol6fK72aHHN7PoD12X2iHp8fmWPHtVVswjXzK6PZPfhmdl19nH8ZbiaHXjGlazAPVVG2F+Zr+C9Zu7GdWote1EyuCYKcZ5JhL0oCrtRiPNMiPNe56R6akbsRrmCe0T7sBPF/iD+ElzNatz/albgnioj7K/MV/BeM3fjumgtO6Mo7I5yZy3Xn9gZpYedUe6s5fpoj4jqqVmLvVFmcX1vD85HsT+EP/w7WY37X80K3FNlhP3V+QLe6W6I82x62Mnk7vrsHtG8h51M7q7P7BFRPTU7scM+n6m9IlzL9ZxlY38Ef/B3shL3vpMVuKfKLK6/my/gne6GOM922OOs12GPuPZKhzPOR7g22iM7u9rhjPOW6qnZiZ27vR6u41rOOM927IP4Q5/JbjxvJjvwDJUVuOds3o73uZvR3hH22OWM84zsetXjjPMRrp1df8iuVz3OOG+pnpr15r1Oa6bb4jquVbNWtmcfwh96JhV4ZjY78SyVlbh3Nm/H+9zNaG8l6vL5aJ9Idg/V46wXZaYbye6hepxx3lI9NevNZ5PFdVyrZq1szz6EP/RRqvDcUSrwTJXVuH8mb8f7zNyJ67hWzXqiPp9n9urJ7jHqcR6FOO91MrJ7qB5nnLdUT81689lkcR3Xqlkr27OP4A98lEo8e5QKPFNlB54xytvxPjN34jquVbMe9s81fJbZqye7R6bHTpTRmiuye6geZ5y3VE/NevPZZHEd16pZK9uzj+APfJRKPFulCs9V2YXnjPJmvMvMfbiOaznjnKIun4/2iWT3yPYO7Pai+ldk91A9zjhvqZ6a9ea9zgo8g+eoWSvbs4/gD3yUKjx3lCo8V2UXnjPKm/EuM/fhOq7ljHNSXTXLyu6R7fVwLderWVZ2D9XjjPMTO+ypWW/e66zAM3iOmrWyPfsI/sBVKvHsUarwXJVdeM4ob8a7zNyH63prOe91DuywxxnnJzXPrD9ketHzg1rPGecnNc+sP6geZ5yfRp3R/JDpnDKdHp7BPdSsle3ZR/AHrlKJZ49Sheeq7MSzVN6Md5m5D9f11nKeTQ87maj1kVFPzTnjPOqMotZHRj3OMyHOez3Osp0ZXMv1atbK9uwj+ANXqcSzVSrxbJWdeJbKm/EuM/fhumgtO5n0sJOJWh9RPc4yIc4zUesjox7nmRDnUZezTGZwLderWSvbs4/gD1ylEs9WqcSzVXbiWSpvxrvM3Ifr1Fr2VBR2VWg0P416nKtE2FOh0fyU6bGjEmEv6nOuMovruYeatbI9+wj+wFUq8WyVSjxbZSeepfJmvMvMfbhutJZdZgbXMj2ZziHTY6eXDK5hejKdw9Uek8E10Tp2ermCe3AfNWtle/YR/IGrVOLZKpV4tspOPEvFzMxeiH/MVSrxbJVKPFtlJ56lYmZmL8Q/5iqVeLZKJZ6tshPPUjEzsxfiH3OVSjxbpRLPVtmJZ6mYmdkL8Y+5SiWerVKJZ6vsxLNUzMzshfjHXKUSz1apxLNVduJZKmZm9kL8Y65SiWerVOLZKjvxLBUzM3sh/jFXqcSzVSrxbJWdeJaKmZm9EP+Yq1Ti2SqVeLbKTjxLxczMXoh/zFUq8WyVSjxbZSeepWJmZi/EP+YqlXi2SiWerbITz1IxM/sF/y26if+AKpV4tkolnq2yE89SeTPeZeY+XDez9klW3WHVPqs87X1OfK/Mu7GfWXPgmuy6p+Oddt5v9/4/xcupVOLZKpV4tspOPEvlzXiXmTtxTXbd06y6w6p9VuC7POGdTnynzHuxn1lz4JrsuifjfZjVdu//U7ycSiWerVKJZ6vsxLNU3ox3mbkX+5k1T7TqDqv2WYHv8oR3OvGdMu/FfmYdu6P+r/AdR+/JLrPa7v1/ipdTqcSzVSrxbJWdeJbKm/EuM/diP7PmiVbdYdU+qzztfU58r9G7sXtn3RPxHUfvOdNdofq8UrycSiWerVKJZ6vsxLNU3ox3YRR2R/2nWnWHVfv8Bfy3Uv9e7GXWHNgd9X+F76jekz3VXaX6vFK8nEolnq1SiWer7MSzVN6Md+klwp7qPtmqO6za5y/gv5X692KPiWR7v8b3VO/KnuquUn1eKV5OpRLPVqnEs1V24lkqb8a79BJhT3VP7M+sbXGtWs8e+9HzHnYz+/A55yNcl93jTje77iqeEZ3DTi897EQ94pqV66M92Okl242wxygz3RPXzK4/ce3VfULcVKUSz1apxLNVduJZKm/Gu0TpYSfqHdiLMsK+Wst5Nj3s9Pp8nonCbpRIpseOymrcv3dGb957RuxEvRO7URR2oxDnvWS7PexEiWR7J/ajKOyq3MLNVCrxbJVKPFtlJ56l8ma8y3kfPuvdk/Ne58DOKBH2mJmuCnHOZHtRetgZpWfU4TyTlbh3b/9oHj2P5r3Oib1RetgZZXZttkucj9KT6ZzYHaWHnUwu40YqlXi2SiWerbITz1J5M97lvA+f9e7JebaTSQ87zExXZXafmW4vxHk2NDvPZCXu3ds/mkfPs/MTe9kQ520neh7Ne8l2W5xlQ6P5ib1siPNMLuNGKpV4tkolnq2yE89SeTPepb0Pn/OunHF+p8MeZ73OiZ2oy3mvxxnnLfZ6Xc6vdg7ssDcz4/w06nAeJaJ6q2acn9iJegfV44zzk3rORNiLuuxEXc57PTU7sXOnx/nVTgo3UanEs1Uq8WyVnXiWypvxLrwPZ+2cz2fWEnvscsZ5i707XTUjdqM+O22Pz6M9Tqo7M+P8xA57nEWJqN7MrJ3zOdee2Il6B/bYVbMRrlXr2Yu67ES9A3vsqtkp0zmx2/b5PNqLnag3xE1UKvFslUo8W2UnnqXyZrwL78NZO+fzmbU9qqtmdKfLvppRtste2+Xz2bRmZpy3VI+zKBH22m70fDSPnhN7s5nZS2FX9dmLuplOS/XV7MTObNQ+kWxP4iYqlXi2SiWerbITz1J5M96ldx/Ozw6fca2a9bDfrome98x0D6qvZpTtstd2+Xw2rZkZ5y3V4yxKhL2z23tGUSd6TuzN5upexHmvc2Iv6mY6LdVXsxM7s1H7RLI9iZuoVOLZKpV4tspOPEvlzXiX6D7sRFFrRthv10TPe2a6B9VXM8p22Wu7fD6b1syM8xM7Ue8O7t9LhL1eIuzNhjhXGa2LsBd1M52W6qvZiZ3ZqH0i2Z7ETVQq8WyVSjxbZSeepfJmvEt0H3aiqDUjqq9mNNM9qL6aUbbLXtvlc7XPiNqHM85b2d5V3L+XCHuMMtOdwX17GfUj7EXdTKel+mp2ynQyuI/aK9uTuIlKJZ6tUolnq+zEs1TejHdR92Gvl1E/wh67akbsqj577KoZZbvstV0+V/uMqH0447yV7V3F/RmFXUZhd9S/g+e0Z/G5eg/2oi47Ue/AHrtqdsp0MriP2ivbk7iJSiWerVKJZ6vsxLNU3ox3Gd2HXYY473UO7LCnZsRutIbzTEfJdtljlzPOW2qu9uCM81a2dwfPyJ7HLqOwq/rZToTnsKtmLfaiLjtRl/NejzPOs52TmnOPqHfI9iRuolKJZ6tU4tkqO/EslTfjXTL3YV+t5TwbGs2J/WxoNG9lu+yxy1m2Q2rOGeetbO8OnjFzHvsr1o46pOaccR51zl7b57y314m9mWT3yfRGnZl5K9uTuIlKJZ6tUolnq+zEs1TejHfJ3If90Vp2MqHRnNjPpCfTOWW77PW6nGdCas4Z561s7w6eMXMW18ysPXBdJivXZ/ZQPYXdbIjz2Z7KaH0k25O4iUolnq1SiWePsgvPUXkz3iV7H64ZrWVPpSfTIa5RiWR7h2yXvajLjkqP6nDGeSvbu4vnZM/impm1J65V6WFHJcJebw2fq/0O7EZhl9iPegd2VIjzXueU7YW4wSiVeLZKJZ49yi48R+XNeJeZ+3DdaC27jDLTJa5llB1d9ma7TET1OOP8xE7UW4HnzJzFdTNrT1zfywj7zAj7XMfnmT0PXNNb33tG0Vpij4mwN9Odxg1GMTMzswL8AI9iZmZmBfgBHsXMzMw248d3FDMzMyvAD/AoZmZmthk/vpmYmZnZRvzwZmJmZmab8KM7EzMzM1uAH9i7MTMzswX4gb0TMzMzW4Qf2TsxMzOzRfiRvRozMzNbiB/aKzEzM7PF+LGdjZmZmW3AD+5MzMzMbBN+dLMxMzOzjfjhzcTMzMw248c3ipmZmRXih9gfYzMzMzMzMzP6H6V4J40CLC57AAAAAElFTkSuQmCC
+						}
+					}
+				}
+				Object:PrintArea
+				{
+					672,1914,0,827
+					1
+					Object:TextDesignElement
+					{
+						417,441,1080,230,False,Cambria,Center,28,13,0,False,603,135,0,False
+						Bold
+						False
+						List<TextLineDetails>:1
+						{
+							13
+							{
+Center
+M;Cambria;28;Bold
+a;Cambria;28;Bold
+s;Cambria;28;Bold
+t;Cambria;28;Bold
+e;Cambria;28;Bold
+r;Cambria;28;Bold
+ ;Cambria;28;Bold
+T;Cambria;28;Bold
+h;Cambria;28;Bold
+e;Cambria;28;Bold
+s;Cambria;28;Bold
+i;Cambria;28;Bold
+s;Cambria;28;Bold
+							}
+						}
+					}
+				}
+				Object:PrintArea
+				{
+					672,1914,0,2156
+					1
+					Object:TextDesignElement
+					{
+						395,361,1125,307,False,Cambria,Center,20,4,2,False,629,192,0,False
+						Regular
+						False
+						List<TextLineDetails>:3
+						{
+							14
+							{
+Center
+M;Cambria;20;Regular
+a;Cambria;20;Regular
+x;Cambria;20;Regular
+ ;Cambria;20;Regular
+M;Cambria;20;Regular
+u;Cambria;20;Regular
+s;Cambria;20;Regular
+t;Cambria;20;Regular
+e;Cambria;20;Regular
+r;Cambria;20;Regular
+m;Cambria;20;Regular
+a;Cambria;20;Regular
+n;Cambria;20;Regular
+n;Cambria;20;Regular
+							}
+							1
+							{
+Center
+ ;Cambria;20;Regular
+							}
+							4
+							{
+Center
+2;Cambria;20;Regular
+0;Cambria;20;Regular
+2;Cambria;20;Regular
+6;Cambria;20;Regular
+							}
+						}
+					}
+				}
+			}
+	}
+	Object:AvailablePrintAreaSide
+	{
+		3142,166,Spine,2327,224
+		7
+			Object:Layer
+			{
+				A-Metallic Gold,AMetallicGold,255,255,215,0,0,True,True,True,DarkBlue
+				1
+				Object:PrintArea
+				{
+					672,166,0,1235
+					0
+				}
+			}
+			Object:Layer
+			{
+				A-Metallic Silver,AMetallicSilver,255,192,192,192,1,True,True,False,
+				1
+				Object:PrintArea
+				{
+					672,166,0,1235
+					0
+				}
+			}
+			Object:Layer
+			{
+				A-Metallic Blue,AMetallicBlue,255,97,147,242,2,True,True,False,
+				1
+				Object:PrintArea
+				{
+					672,166,0,1235
+					0
+				}
+			}
+			Object:Layer
+			{
+				A-Metallic Red,AMetallicRed,255,254,125,120,3,True,True,False,
+				1
+				Object:PrintArea
+				{
+					672,166,0,1235
+					0
+				}
+			}
+			Object:Layer
+			{
+				D-Black,DBlack,255,0,0,0,4,True,True,False,
+				1
+				Object:PrintArea
+				{
+					672,166,0,1235
+					0
+				}
+			}
+			Object:Layer
+			{
+				C-Metallic Gold,CMetallicGold,255,255,215,0,5,True,False,False,
+				1
+				Object:PrintArea
+				{
+					672,166,0,1235
+					0
+				}
+			}
+			Object:Layer
+			{
+				C-Metallic Silver,CMetallicSilver,255,192,192,192,6,True,False,False,
+				1
+				Object:PrintArea
+				{
+					672,166,0,1235
+					0
+				}
+			}
+	}
+	Object:AvailablePrintAreaSide
+	{
+		3142,1914,Back,224,224
+		1
+			Object:Layer
+			{
+				A-Metallic Gold,AMetallicGold,255,255,215,0,0,True,True,True,DarkBlue
+				0
+			}
+	}
+161
+Object:Guideline
+{
+0,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+5,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+4,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+11,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+10,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+9,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+2,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+11,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+11,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+5,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+5,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+4,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+11,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+13,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+10,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+9,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+5,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+2845,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+2,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+2,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+13,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+12,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+9,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+11,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+13,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+5,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+10,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+10,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+3,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+12,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+3,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+1639,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+4,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+13,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+5,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+13,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+12,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+10,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+4,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+3,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+13,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+12,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+13,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+5,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+4,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+3,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+14,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+14,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+14,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+4,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+3,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+10,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+4,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+12,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+13,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+9,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+9,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+4,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+8,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+2,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+3,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+9,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+11,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+8,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+11,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+14,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+14,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+8,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+5,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+5,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+3,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+718,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+8,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+9,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+3,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+4,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+14,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+12,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+14,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+11,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+9,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+5,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+9,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+13,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+3,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+13,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+5,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+2,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+3,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+11,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+14,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+10,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+2,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+5,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+13,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+1,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+2,HORIZONTAL,1375,False,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+5,HORIZONTAL,1375,True,15
+}
+Object:Guideline
+{
+3152,VERTICAL,674,False,15
+}
+}

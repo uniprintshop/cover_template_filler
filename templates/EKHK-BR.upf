@@ -1,0 +1,220 @@
+#UPFVERSION:1.1
+OR_HORIZONTALSPINE
+template_1A
+Object:template1A
+{
+	UniCover Hard A4 Portrait XL,type_1A,3590.55118110236,2362.20472440945,2362.20472440945,0,401.574803149606,0,224.409448818898,224.409448818898,224.409448818898,224.409448818898,224.409448818898,35.4330708661417,224.409448818898,35.4330708661417,224.409448818898,224.409448818898,224.409448818898,224.409448818898,CARDBOARD,HARD
+}
+Object:AvailablePrintArea
+{
+3590,5125,10,10,Aluminium,Metallic Gold
+	Object:AvailablePrintAreaSide
+	{
+		1914,3142,Front,224,224
+		7
+			Object:Layer
+			{
+				Metallic Gold,MetallicGold,255,255,215,0
+				1
+				Object:PrintArea
+				{
+					672,3142,0,621
+					0
+				}
+			}
+			Object:Layer
+			{
+				Metallic Silver,MetallicSilver,255,192,192,192
+				1
+				Object:PrintArea
+				{
+					672,3142,0,621
+					0
+				}
+			}
+			Object:Layer
+			{
+				Metallic Blue,MetallicBlue,255,97,147,242
+				1
+				Object:PrintArea
+				{
+					672,3142,0,621
+					0
+				}
+			}
+			Object:Layer
+			{
+				Metallic Red,MetallicRed,255,254,125,120
+				1
+				Object:PrintArea
+				{
+					672,3142,0,621
+					0
+				}
+			}
+			Object:Layer
+			{
+				Black,Black,255,0,0,0
+				1
+				Object:PrintArea
+				{
+					672,3142,0,621
+					0
+				}
+			}
+			Object:Layer
+			{
+				Gold OffsetSheet,GoldOffsetSheet,255,255,215,0
+				1
+				Object:PrintArea
+				{
+					672,3142,0,621
+					0
+				}
+			}
+			Object:Layer
+			{
+				Silver OffsetSheet,SilverOffsetSheet,255,192,192,192
+				1
+				Object:PrintArea
+				{
+					672,3142,0,621
+					0
+				}
+			}
+	}
+	Object:AvailablePrintAreaSide
+	{
+		331,3142,Spine,224,2397
+		7
+			Object:Layer
+			{
+				Metallic Gold,MetallicGold,255,255,215,0
+				1
+				Object:PrintArea
+				{
+					331,3142,0,0
+					1
+					Object:TextDesignElement
+					{
+						37,114,3069,103,False,Arial,Near,20,18,0,False,702,96,0
+						Regular
+						False
+						List<string>:1
+						{
+							18
+							{
+EKHK a. D. Schweda
+							}
+						}
+					}
+				}
+			}
+			Object:Layer
+			{
+				Metallic Silver,MetallicSilver,255,192,192,192
+				1
+				Object:PrintArea
+				{
+					331,3142,0,0
+					0
+				}
+			}
+			Object:Layer
+			{
+				Metallic Blue,MetallicBlue,255,97,147,242
+				1
+				Object:PrintArea
+				{
+					331,3142,0,0
+					0
+				}
+			}
+			Object:Layer
+			{
+				Metallic Red,MetallicRed,255,254,125,120
+				1
+				Object:PrintArea
+				{
+					331,3142,0,0
+					0
+				}
+			}
+			Object:Layer
+			{
+				Black,Black,255,0,0,0
+				1
+				Object:PrintArea
+				{
+					331,3142,0,0
+					0
+				}
+			}
+			Object:Layer
+			{
+				Gold OffsetSheet,GoldOffsetSheet,255,255,215,0
+				1
+				Object:PrintArea
+				{
+					331,3142,0,0
+					0
+				}
+			}
+			Object:Layer
+			{
+				Silver OffsetSheet,SilverOffsetSheet,255,192,192,192
+				1
+				Object:PrintArea
+				{
+					331,3142,0,0
+					0
+				}
+			}
+	}
+	Object:AvailablePrintAreaSide
+	{
+		1914,3142,Back,224,2987
+		0
+	}
+10
+Object:Guideline
+{
+11,HORIZONTAL,1635,True,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1635,True,15
+}
+Object:Guideline
+{
+13,HORIZONTAL,1635,False,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1635,False,15
+}
+Object:Guideline
+{
+7,HORIZONTAL,1635,False,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1635,False,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1635,False,15
+}
+Object:Guideline
+{
+0,HORIZONTAL,1635,True,15
+}
+Object:Guideline
+{
+6,HORIZONTAL,1635,False,15
+}
+Object:Guideline
+{
+4,HORIZONTAL,1635,True,15
+}
+}
