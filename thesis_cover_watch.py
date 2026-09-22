@@ -669,7 +669,17 @@ def _uni_aliases(uni: dict) -> list[str]:
 
 
 def cover_university_hits(text: str, universities: list[dict]) -> list[dict]:
-    """Every config university whose alias actually appears on the cover."""
+    """Every config university whose alias actually appears on the cover.
+
+    141 universities x several aliases x regex scans over the cover blob cost
+    ~0.3s; this runs twice per PDF (hardcoded pre-check + resolution), so a
+    short per-text cache is kept. The universities list is stable in-process.
+    """
+    key = (norm(text), id(universities))
+    now = time.monotonic()
+    cached = _UNI_HITS_CACHE.get(key)
+    if cached is not None and now - cached[0] < _CACHE_TTL:
+        return list(cached[1])
     blob = norm(text)
     hits: list[dict] = []
     for uni in universities:
@@ -681,7 +691,8 @@ def cover_university_hits(text: str, universities: list[dict]) -> list[dict]:
                 best_len = len(norm(alias))
         if best_alias:
             hits.append({"uni": uni, "alias": best_alias, "alias_len": best_len})
-    return hits
+    _UNI_HITS_CACHE[key] = (now, hits)
+    return list(hits)
 
 
 def _full_template_name_in_blob(stem: str, cover_text: str) -> bool:
@@ -849,12 +860,29 @@ def distinctive_filename_tokens(name: str) -> list[str]:
     return tokens
 
 
+# Brief caches for data that is expensive to (re)scan on the AFP share or in
+# config: the plain-template catalog and per-cover university alias hits.
+_TPL_CACHE: dict[str, tuple[float, tuple[Path, ...]]] = {}
+_UNI_HITS_CACHE: dict[tuple[str, int], tuple[float, list[dict]]] = {}
+_CACHE_TTL = 30.0
+
+
 def list_plain_templates(templates_dir: Path | None) -> list[Path]:
     if not templates_dir or not templates_dir.is_dir():
         return []
-    return sorted(
+    # The glob + per-file is_file() costs ~0.5s over the AFP share, and the
+    # result is needed 2-3x per PDF. Cache briefly; downstream code still
+    # re-checks path.is_file() before using an entry.
+    key = str(templates_dir)
+    now = time.monotonic()
+    cached = _TPL_CACHE.get(key)
+    if cached is not None and now - cached[0] < _CACHE_TTL:
+        return list(cached[1])
+    result = sorted(
         p for p in templates_dir.glob("*.upf") if p.is_file() and not is_title_template(p.name)
     )
+    _TPL_CACHE[key] = (now, tuple(result))
+    return list(result)
 
 
 def grounded_templates(
@@ -982,6 +1010,7 @@ def model_search_templates(
                 min(int(mcfg.get("timeout", 180)), 60),
                 think=model_think_value(mcfg),
                 num_ctx=int(mcfg.get("num_ctx", 8192)),
+                num_thread=mcfg.get("num_thread") or None,
                 keep_alive=str(mcfg.get("keep_alive", "30m")),
                 num_predict=150,
             )
@@ -1210,14 +1239,21 @@ def call_ollama(
     num_predict: int = 300,
     think: bool | str = False,
     num_ctx: int = 8192,
+    num_thread: int | None = None,
     keep_alive: str = "30m",
 ) -> str:
+    options = {"temperature": 0.0, "num_predict": num_predict, "num_ctx": num_ctx}
+    if num_thread:
+        # Ollama's auto thread count measured ~2x slower decode than an
+        # explicit setting on the CPU inference box. Keep it constant across
+        # calls: changing it invalidates Ollama's prompt KV cache.
+        options["num_thread"] = int(num_thread)
     payload = {
         "model": model,
         "stream": False,
         "think": think,
         "keep_alive": keep_alive,
-        "options": {"temperature": 0.0, "num_predict": num_predict, "num_ctx": num_ctx},
+        "options": options,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -1394,6 +1430,7 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
                     int(mcfg.get("timeout", 180)),
                     think=model_think_value(mcfg),
                     num_ctx=int(mcfg.get("num_ctx", 8192)),
+                    num_thread=mcfg.get("num_thread") or None,
                     keep_alive=str(mcfg.get("keep_alive", "30m")),
                 )
             else:
@@ -2011,6 +2048,7 @@ def write_fail_report(
                     num_predict=400,
                     think=model_think_value(mcfg),
                     num_ctx=int(mcfg.get("num_ctx", 8192)),
+                    num_thread=mcfg.get("num_thread") or None,
                     keep_alive=str(mcfg.get("keep_alive", "30m")),
                 )
             else:

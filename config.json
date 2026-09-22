@@ -54,11 +54,12 @@
     "backend": "ollama",
     "name": "ornith-1.5:9b",
     "num_ctx": 8192,
-    "keep_alive": "30m",
+    "keep_alive": "24h",
     "host": "http://192.168.2.123:11434",
     "openai_base": "http://127.0.0.1:1234/v1",
     "api_key": "not-needed",
-    "timeout": 180
+    "timeout": 180,
+    "num_thread": 6
   },
   "universities": [
     {
