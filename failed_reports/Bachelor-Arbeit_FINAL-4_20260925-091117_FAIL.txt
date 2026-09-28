@@ -1,0 +1,86 @@
+FAIL  Bachelor-Arbeit_FINAL-4.pdf
+time  20260925-091117
+error RuntimeError: Cover names more than one configured university (ambiguous_university:hhu,witten-herdecke). Model did not uniquely pick one of those cover matches. Refusing to stamp.
+
+--- extracted ---
+{
+  "university_id": "",
+  "university_template": "",
+  "university_raw": "Universität Witten/Herdecke",
+  "university_matches": [
+    {
+      "id": "hhu",
+      "template": "Düsseldorf_hhu_Heinrich_Heine_Universität.upf",
+      "alias": "universität düsseldorf"
+    },
+    {
+      "id": "witten-herdecke",
+      "template": "Witten-Herdecke_Universität.upf",
+      "alias": "universität witten herdecke"
+    }
+  ],
+  "author": "Erdt, Celina",
+  "title": "Aktivierung der Big Five States durch situative Merkmale: Eine Untersuchung anhand von Online DIAMONDS-Situationen",
+  "degree_text": "Bachelorarbeit",
+  "year": "2026",
+  "risks": [
+    "author_from_model_span",
+    "ambiguous_university:hhu,witten-herdecke",
+    "ambiguous_template:13"
+  ],
+  "ok_to_stamp": false,
+  "model_raw": {
+    "university": "Universität Witten/Herdecke",
+    "author": "Erdt, Celina",
+    "title": "Aktivierung der Big Five States durch situative Merkmale: Eine Untersuchung anhand von Online DIAMONDS-Situationen",
+    "degree_phrase": "Bachelorarbeit",
+    "degree_type": "bachelor",
+    "year": "2026",
+    "template": ""
+  }
+}
+
+--- model report ---
+Kein Cover wurde produziert, weil die Universität mehrdeutig ist: das Modell hat „Universität Witten/Herdecke" genannt, was zwei Konfigurationsdateien trifft (hhu und witten-herdecke). Das Modell hat sich nicht eindeutig für eine davon entschieden, daher wurde das Stempeln verweigert.
+
+Auf den Seiten 1–2 wurde gefunden: Titel „Aktivierung der Big Five States durch situative Merkmale", Bachelorarbeit, Universität Witten/Herdecke, Autorin Erdt, Celina, Witten, 25.09.2026. Der Text selbst nennt klar „Universität Witten/Herdecke", nicht „Universität Düsseldorf", obwohl die hhu-Vorlage den Alias „Universität Düsseldorf" verwendet.
+
+Ein Mensch sollte prüfen, ob die Adresse „Schützenstrasse 25, 40211 Düsseldorf" in der Autorennotiz nur die Postadresse ist und nicht auf eine falsche Universität hindeutet. Danach sollte die Vorlage Witten-Herdecke_Universität.upf manuell ausgewählt werden, damit das Cover korrekt gestempelt wird.
+
+--- cover text (truncated) ---
+Aktivierung der Big Five States durch situative Merkmale:
+Eine Untersuchung anhand von Online DIAMONDS-
+Situationen
+Bachelorarbeit
+Zur Erlangung des akademischen Grades Bachelor of Science (B.Sc.) im
+Studiengang Psychologie der Fakultät für Gesundheit
+Universität Witten/Herdecke
+________________________________________________________________
+vorgelegt von
+Erdt, Celina
+bei
+Erstgutachterin: Dr. phil. Melanie Schliebener
+Zweitgutachter: Univ.-Prof. Dr. Michael Dufner
+Witten, 25.09.2026
+Autorennotiz
+Celina Erdt, Matrikel-Nr.: 2300458, E-Mail: celina.erdt@uni-wh.de
+Postadresse: Schützenstrasse 25, 40211 Düsseldorf
+
+SITUATIVE MERKMALE & BIG-FIVE-STATES 2
+Zusammenfassung
+Die Persönlichkeit von Menschen gilt als zeitlich stabil, während das Verhalten einer Person
+zwischen Situationen variiert. Die vorliegende Arbeit beschäftigte sich mit der Frage, ob sich
+beobachtbare Big-Five-States zwischen Situationen unterscheiden und ob dabei bestimmte
+States mit spezifischen DIAMONDS-Dimensionen zusammenhängen. In einer Online-Studie
+wurden 34 Versuchspersonen in Video-Telefonaten in Zoom durch 32 experimentell
+entwickelte Situationen geführt, wovon jeweils 4 Situationen auf je eine DIAMONDS-
+Dimension bezogen waren. Im Nachgang wurden Videoaufzeichnungen der einzelnen
+Untersuchungen mittels einer angepassten Version des BFI-10 durch sieben unabhängige
+Fremdrater hinsichtlich der beobachteten Big-Five-State-Ausprägung ausgewertet. Ein
+zentrales Ergebnis ist, dass sich für alle fünf Big-Five-States signifikante Unterschiede
+zwischen den Situationen zeigten. Die erwarteten DIAMONDS-Zusammenhänge äußerten
+sich jedoch nur teilweise. Für Adversity wiesen alle vier Situationen die erwartete geringere
+Verträglichkeit auf. Die Effekte für Sociality, Duty, Intellect, Negativity und Deception
+konnten jeweils nur in ein bis zwei Situationen beobachtet werden. Somit konnte die
+Untersuchung die Annahme stützen, dass sich situationsabhängige Unterschiede von
+Persönlichkeitszuständen in Online-Vid

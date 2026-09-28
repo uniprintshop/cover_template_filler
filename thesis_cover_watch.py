@@ -2459,6 +2459,19 @@ def scan_existing(cfg: dict) -> None:
         handle_pdf(pdf, cfg, origin="scan")
 
 
+def _watcher_dead(observer) -> bool:
+    """True when the observer or any of its emitter threads has died.
+
+    watchdog's is_alive() only covers the dispatcher thread. On an AFP
+    dropout the polling emitter dies with an unhandled OSError while the
+    observer itself keeps looking healthy — the watcher then goes deaf and
+    PDFs are only picked up by the periodic rescan, minutes later.
+    """
+    if not observer.is_alive():
+        return True
+    return any(not e.is_alive() for e in observer.emitters)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", type=Path, default=Path("config.json"))
@@ -2526,11 +2539,17 @@ def main() -> int:
         last = time.time()
         while True:
             time.sleep(1)
-            if not observer.is_alive():
-                # A crash inside the observer thread would otherwise leave the
-                # process running but deaf to new PDFs. Exit so systemd's
+            if _watcher_dead(observer):
+                # A crash inside the observer or an emitter thread would
+                # otherwise leave the process running but deaf to new PDFs
+                # (e.g. after an AFP dropout). Exit so systemd's
                 # Restart=always brings up a fresh watcher.
-                LOG.error("File watcher thread died — exiting so the service restarts")
+                LOG.error(
+                    "File watcher thread died (observer alive=%s, emitters=%s) — "
+                    "exiting so the service restarts",
+                    observer.is_alive(),
+                    [(type(e).__name__, e.is_alive()) for e in observer.emitters],
+                )
                 exit_code = 1
                 break
             if interval and time.time() - last >= interval:

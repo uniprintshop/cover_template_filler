@@ -1,0 +1,85 @@
+FAIL  Bachelorthesis Handlungssicherheit und Wissenstand im interprofessionellen ECMO-Team, Tanja Steinbrink Matrikelnummer 238184.pdf
+time  20260923-174819
+error RuntimeError: Cover names more than one configured university (ambiguous_university:akkon-hochschule,ist-hochschule,wuppertal). Model did not uniquely pick one of those cover matches. Refusing to stamp.
+
+--- extracted ---
+{
+  "university_id": "",
+  "university_template": "",
+  "university_raw": "",
+  "university_matches": [
+    {
+      "id": "wuppertal",
+      "template": "Wuppertal_universität.upf",
+      "alias": "wuppertal"
+    },
+    {
+      "id": "akkon-hochschule",
+      "template": "Akkon_Hochschule.upf",
+      "alias": "hochschule für humanwissenschaften"
+    },
+    {
+      "id": "ist-hochschule",
+      "template": "IST_Hochschule_für_Management.upf",
+      "alias": "ist hochschule"
+    }
+  ],
+  "author": "",
+  "title": "",
+  "degree_text": "Master-Thesis",
+  "year": "",
+  "risks": [
+    "multiple_years_unresolved",
+    "ambiguous_university:akkon-hochschule,ist-hochschule,wuppertal",
+    "ambiguous_template:25",
+    "degree_inferred_not_on_cover"
+  ],
+  "ok_to_stamp": false,
+  "model_raw": {
+    "university": "",
+    "author": "",
+    "title": "",
+    "degree_phrase": "",
+    "degree_type": "unknown",
+    "year": "",
+    "template": ""
+  }
+}
+
+--- model report ---
+Fehlerbericht – keine Abdeckung erstellt
+
+Der Folio-Stempel wurde nicht angebracht, weil die Abdeckung drei mögliche Universitäten enthält (Akkon-Hochschule, IST-Hochschule und Wuppertal). Das Modell konnte keine eindeutige Auswahl treffen und hat sich geweigert zu stampen.
+
+Auf den Seiten 1–2 ist nur der Text der Zusammenfassung zu sehen. Dort wird „Helios Universitätsklinikum Wuppertal" genannt, aber keine der drei konfigurierten Universitäten wird eindeutig als Institution der Arbeit bezeichnet. Es fehlen zudem Autor, Titel, Grad-Formulierung und Jahr.
+
+Bitte prüfen Sie: Ist die Arbeit eindeutig einer dieser drei Universitäten zuzuordnen? Steht der Name der Universität auf dem Titelblatt oder in den Seiten 1–2? Falls die Zuordnung nicht eindeutig ist, muss eine weitere Seite oder ein Titelblatt bereitgestellt werden, bevor der Stempel angebracht wird.
+
+--- cover text (truncated) ---
+Zusammenfassung
+Hintergrund: Die Versorgung von Patient*innen unter extrakorporaler Membranoxygenierung
+stellt hohe fachliche Anforderungen an das interprofessionelle Behandlungsteam. Im Rahmen
+des Aufbaus eines zertifizierten ECMO-Zentrums am Helios Universitätsklinikum Wuppertal
+sollte deshalb zunächst der aktuelle Ausgangsstand des interprofessionellen ECMO-Teams
+erfasst werden. Die Untersuchung wurde in das Knowledge-to-Action-Framework nach Straus
+et al. (2013) eingeordnet.
+Fragestellung: Untersucht wurde, welcher Zusammenhang zwischen der subjektiven ECMO-
+Handlungssicherheit und dem theoretischen ECMO-Wissensstand im interprofessionellen
+Team der beteiligten Intensivstationen besteht.
+Methodik: Die Untersuchung wurde als quantitative monozentrische Querschnittsstudie
+durchgeführt. Zur Erfassung der subjektiven ECMO-Handlungssicherheit und des
+theoretischen ECMO-Wissensstands wurden ein selbst entwickelter Fragebogen und ein
+ebenfalls selbst entwickeltes Wissensquiz eingesetzt. Beide Instrumente wurden
+multiprofessionell und pädagogisch-didaktisch geprüft. In die gepaarte Analyse wurden 55
+Teilnehmende eingeschlossen. Der Zusammenhang zwischen beiden Gesamtscores wurde
+mit der Spearman-Rangkorrelation geprüft.
+Ergebnisse: Zwischen der subjektiven ECMO-Handlungssicherheit und dem theoretischen
+ECMO-Wissensstand zeigte sich ein statistisch signifikanter positiver Zusammenhang
+(Spearman-𝜌 = 0,743; 𝜌 < 0,001). Die Nullhypothese wurde verworfen. Bei 42 von 55
+Teilnehmenden lagen beide Scores in derselben stichprobenbezogenen Kategorie. Bei 13
+Teilnehmenden bestanden unterschiedliche Zuordnungen. Das Know-Do-Gap sowie die
+Subskalen- und Itemanalysen zeigten weitere Unterschiede innerhalb der Stichprobe.
+Schlussfolgerung: Eine höhere subjektive ECMO-Handlungssicherheit war innerhalb der
+Stichprobe überwiegend mit einem höheren theoretischen ECMO-Wissensstand verbunden.
+Bei einzelnen Teilnehmenden wichen beide Bereiche jedoch relevant voneinander ab. Das
+tatsächliche 
