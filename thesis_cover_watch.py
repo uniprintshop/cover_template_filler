@@ -1277,6 +1277,43 @@ def call_ollama(
     return body.get("message", {}).get("content", "") or body.get("error", "")
 
 
+_MODEL_REWARM_S = 12 * 3600
+
+
+def warmup_model(cfg: dict) -> None:
+    """Keep the model resident on the inference box and its prompt cache primed.
+
+    A cold model load costs ~26s (load + full prefill), which the first PDF
+    after an idle period would otherwise pay. The warmup call reuses the real
+    SYSTEM prompt so the extraction call afterwards shares its KV prefix and
+    prefills only the per-PDF part. Runs in the background; failure is logged,
+    never fatal — the first PDF warms the model the old way.
+    """
+    mcfg = cfg.get("model", {})
+    if mcfg.get("backend", "ollama") != "ollama":
+        return
+    try:
+        call_ollama(
+            mcfg.get("name", "qwen3:8b"),
+            SYSTEM,
+            "CANDIDATES: {}\nCOVER_TEXT:\nWarmup",
+            mcfg.get("host", "http://[IP_ADDRESS]:11434"),
+            min(int(mcfg.get("timeout", 180)), 90),
+            think=model_think_value(mcfg),
+            num_ctx=int(mcfg.get("num_ctx", 8192)),
+            num_thread=mcfg.get("num_thread") or None,
+            keep_alive=str(mcfg.get("keep_alive", "30m")),
+            num_predict=8,
+        )
+        LOG.info("Model warmup done — model resident, SYSTEM prompt cached")
+    except Exception as exc:
+        LOG.warning("Model warmup failed (%s) — the next PDF warms it instead", exc)
+
+
+def spawn_model_warmup(cfg: dict) -> None:
+    threading.Thread(target=warmup_model, args=(cfg,), daemon=True).start()
+
+
 def call_openai(
     model: str,
     system: str,
@@ -2532,6 +2569,8 @@ def main() -> int:
         return 1
     observer.schedule(handler, str(Path(cfg["watch_dir"])), recursive=False)
     observer.start()
+    spawn_model_warmup(cfg)
+    last_warm = time.monotonic()
     LOG.info("Watching %s  →  %s", cfg["watch_dir"], cfg["output_dir"])
     exit_code = 0
     try:
@@ -2558,6 +2597,11 @@ def main() -> int:
                     scan_existing(cfg)
                 except Exception:
                     LOG.exception("Periodic rescan failed — watcher keeps running")
+            if time.monotonic() - last_warm >= _MODEL_REWARM_S:
+                # keep_alive is finite; after a long idle the server would
+                # evict the model and the next PDF would pay a cold load.
+                last_warm = time.monotonic()
+                spawn_model_warmup(cfg)
     except KeyboardInterrupt:
         LOG.info("Interrupted — stopping watcher")
     finally:
