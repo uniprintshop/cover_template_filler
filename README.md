@@ -4,7 +4,7 @@ When a PDF is dropped into `watch_dir`, the script:
 
 1. Reads pages 1–2 (OCR if there is almost no selectable text)
 2. Asks your local model for university / author / title / degree / year
-3. **Rejects** any author, title or year that is not an exact substring of the cover text (so Qwen cannot “correct” spelling)
+3. **Rejects** any author, title or year that cannot be grounded in the cover text (so the model cannot “correct” spelling). Titles may differ in sentence punctuation at PDF line breaks; the PDF's wording is written to the foil.
 4. Picks the `.upf` template from `universities` aliases
 5. Fills 2 or 3 text fields in the UPF
 6. Writes **two** `.upf` files when possible: the regular cover, and a `TITEL`/`TITLE` sibling template for the same school (title goes in the extra field)
@@ -75,6 +75,17 @@ Templates are chosen only from aliases that **already appear on pages 1–2**. T
 - Several matching schools → the model may pick **only among those**. If it cannot, the job fails (no UPF).
 - None → fail. Add aliases, or put the institution name on the cover.
 
+Multi-word aliases match consecutive phrases, allowing spaces, slashes and
+hyphens (e.g. `Universität Witten/Herdecke`). Words scattered across different
+parts of the cover do not form a university name. Explicit postal-address
+lines are excluded from university matching.
+
 Author may stand alone (no “vorgelegt von”). The model may point at that span; Python still requires an exact substring of the cover and rejects supervisor-like names (`Prof.`, Erstgutachter, …). Years must appear on the cover; if several do, the model may choose one of them. PDF metadata is not used as a source of author/title.
 
 The sidecar `.json` includes `ok_to_stamp`, `risks`, and `university_matches`. Check it before foil-stamping if any risk is listed.
+
+Title variants require `write_title_variant: true`, a matching `TITEL`/`TITLE`
+sibling template and a cover-grounded title. If the model changes title words
+or supplies no title, the title variant is skipped; `variant_errors` explains
+why. A supplied title that fails validation also adds `title_not_on_cover`
+to `risks`. This does not prevent writing the regular cover.

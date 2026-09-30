@@ -636,21 +636,21 @@ def _alias_in_blob(alias: str, blob: str) -> bool:
         return False
     if len(a) <= 4:
         return re.search(rf"(?:^|\s){re.escape(a)}(?:\s|$)", blob) is not None
-    # Multi-word aliases: every word must appear as a whole word, so
-    # "TH Köln" does not match inside "AutomatisierungsTECHNIK ..."
-    # and "Institut" does not match inside "INSTITUT für ...".
-    if " " in a:
-        whole = all(
-            re.search(rf"(?:^|[\s,.;:()\-–—/]){re.escape(w)}(?:$|[\s,.;:()\-–—/])", blob) is not None
-            for w in a.split()
-        )
-        if whole:
+    # Institution names must be consecutive phrases, not words found
+    # anywhere on the two pages (a postal city is not a second university).
+    # Treat spaces, slashes and hyphens alike: Witten/Herdecke is the same
+    # name as Witten Herdecke, including when printed across lines.
+    words = re.split(r"[\s,.;:()_\-–—/]+", a)
+    words = [w for w in words if w]
+    if len(words) > 1:
+        phrase = r"[\s,.;:()_\-–—/]+".join(re.escape(w) for w in words)
+        if re.search(rf"(?:^|[^\wäöüß]){phrase}(?:$|[^\wäöüß])", blob):
             return True
         # Glued-text fallback (PDFs whose text layer has no spaces, e.g.
         # "derBergischenUniversitätWuppertal"): the alias must appear with
         # all spaces removed, as one contiguous run, to still count.
-        compact_blob = re.sub(r"[\s,.;:()\-–—/]+", "", blob)
-        compact_a = "".join(a.split())
+        compact_blob = re.sub(r"[\s,.;:()_\-–—/]+", "", blob)
+        compact_a = "".join(words)
         return compact_a in compact_blob
     # Single long token: still require word boundaries so "technik" does
     # not match inside "automatisierungstechnik". Glued-text fallback for
@@ -680,7 +680,15 @@ def cover_university_hits(text: str, universities: list[dict]) -> list[dict]:
     cached = _UNI_HITS_CACHE.get(key)
     if cached is not None and now - cached[0] < _CACHE_TTL:
         return list(cached[1])
-    blob = norm(text)
+    # Explicit postal-address lines identify where someone lives, not the
+    # awarding school. Keep them in the full cover for other field checks.
+    blob = norm("\n".join(
+        line for line in text.splitlines()
+        if not re.match(
+            r"(?i)^\s*(?:postadresse|postanschrift|wohnadresse|wohnanschrift|anschrift)\s*:",
+            line,
+        )
+    ))
     hits: list[dict] = []
     for uni in universities:
         best_alias = ""
@@ -777,7 +785,10 @@ def _model_picks_hit(model_guess: str, hits: list[dict], cover_text: str) -> dic
     matching: list[dict] = []
     for h in hits:
         names = _uni_aliases(h["uni"])
-        if any(norm(a) and (norm(a) in ng or ng in norm(a)) for a in names):
+        if any(
+            _alias_in_blob(a, ng) or _alias_in_blob(model_guess, norm(a))
+            for a in names
+        ):
             matching.append(h)
     ids = {h["uni"]["id"]: h for h in matching}
     if len(ids) == 1:
@@ -1426,6 +1437,39 @@ def cover_span(value: str, haystack: str) -> str:
     return ""
 
 
+def title_cover_span(value: str, haystack: str) -> str:
+    """Ground a title, allowing sentence punctuation changes at line breaks.
+
+    Models sometimes insert a period between a heading and subtitle. Match
+    every word exactly and allow that punctuation difference only where the
+    PDF actually has a line break. Return the PDF's text, not the model's
+    punctuation. Same-line edits and ambiguous matches are still rejected.
+    """
+    exact = cover_span(value, haystack)
+    if exact or not value:
+        return exact
+
+    tokens = value.split()
+    parts = [r"(?<!\w)"]
+    for i, token in enumerate(tokens):
+        word = token.rstrip(".,;:!?") or token
+        punctuation = token[len(word):]
+        parts.append(re.escape(word))
+        if i < len(tokens) - 1:
+            parts.append(
+                rf"(?:{re.escape(punctuation)}\s+|[.,;:!?]*[ \t]*\r?\n\s*)"
+            )
+        elif punctuation:
+            parts.append(
+                rf"(?:{re.escape(punctuation)}|(?=[ \t]*(?:\r?\n|$)))"
+            )
+    parts.append(r"(?!\w)")
+    matches = list(re.finditer("".join(parts), haystack))
+    if len(matches) != 1:
+        return ""
+    return re.sub(r"\s+", " ", matches[0].group()).strip()
+
+
 def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
     years = years_in(cover_text)
     labelled_authors = author_hints(cover_text)
@@ -1494,7 +1538,11 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
     if author:
         author = cover_span(author, hay) or author
 
-    title = cover_span(str(model_fields.get("title") or "").strip(), hay)
+    model_title = str(model_fields.get("title") or "").strip()
+    title = title_cover_span(model_title, hay)
+    if model_title and not title:
+        risks.append("title_not_on_cover")
+        LOG.warning("Model title did not match the cover — TITLE variants will be skipped")
 
     year, yr = resolve_year(
         hay, str(model_fields.get("year") or "").strip(), years, author,
@@ -1525,6 +1573,8 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
     tpl_names = available_names
     template_learned = False
     notes: list[str] = []
+    if "title_not_on_cover" in risks:
+        notes.append("Title omitted: the model's title could not be matched to the PDF cover.")
     hard = hardcoded_template_path(uni, templates_dir)
     if hard is not None:
         template_name = hard.name
