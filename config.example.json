@@ -51,16 +51,13 @@
     ]
   },
   "model": {
-    "backend": "ollama",
+    "backend": "openai",
     "think": false,
-    "name": "ornith-1.5:9b",
-    "num_ctx": 8192,
-    "keep_alive": "24h",
-    "host": "http://192.168.2.123:11434",
-    "openai_base": "http://127.0.0.1:1234/v1",
-    "api_key": "not-needed",
-    "timeout": 180,
-    "num_thread": 6
+    "name": "qwen3.8",
+    "openai_base": "https://your-openai-compatible-endpoint/v1",
+    "api_key": "REPLACE_WITH_YOUR_API_KEY",
+    "openai_json_mode": true,
+    "timeout": 180
   },
   "universities": [
     {

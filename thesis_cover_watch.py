@@ -1033,6 +1033,8 @@ def model_search_templates(
                 mcfg.get("openai_base", "http://[IP_ADDRESS]:1234/v1"),
                 mcfg.get("api_key", "not-needed"),
                 min(int(mcfg.get("timeout", 180)), 60),
+                json_mode=bool(mcfg.get("openai_json_mode", True)),
+                think=model_think_value(mcfg),
             )
     except Exception as exc:
         return None, f"Model-template search failed ({exc})."
@@ -1325,6 +1327,11 @@ def spawn_model_warmup(cfg: dict) -> None:
     threading.Thread(target=warmup_model, args=(cfg,), daemon=True).start()
 
 
+# Explicit UA for hosted OpenAI-compatible endpoints: see the note in
+# call_openai — the default Python-urllib UA is banned by some WAFs.
+_OPENAI_USER_AGENT = "thesis-cover-watcher/1.0"
+
+
 def call_openai(
     model: str,
     system: str,
@@ -1335,6 +1342,7 @@ def call_openai(
     *,
     json_mode: bool = True,
     num_predict: int = 300,
+    think: bool | str = False,
 ) -> str:
     payload = {
         "model": model,
@@ -1345,9 +1353,21 @@ def call_openai(
             {"role": "user", "content": user},
         ],
     }
+    # Reasoning control. A bare top-level `thinking` flag is IGNORED by this
+    # vLLM gateway (it still emits a reasoning trace), which eats the
+    # max_tokens budget and leaves `content` empty. The chat-template kwarg is
+    # what actually toggles the model's thinking mode on this backend.
+    if isinstance(think, str) and think:
+        payload["reasoning_effort"] = think
+        payload["chat_template_kwargs"] = {"enable_thinking": True}
+    elif think is False:
+        payload["chat_template_kwargs"] = {"enable_thinking": False}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
-    headers = {"Content-Type": "application/json"}
+    # Some gateways sit behind Cloudflare and ban Python's default
+    # `Python-urllib` User-Agent (HTTP 403 "Error 1010"). Send an explicit
+    # identifying UA so the request is not blocked by that WAF rule.
+    headers = {"Content-Type": "application/json", "User-Agent": _OPENAI_USER_AGENT}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     req = urllib.request.Request(
@@ -1361,7 +1381,17 @@ def call_openai(
             body = json.loads(resp.read().decode("utf-8"))
     except urllib.error.URLError as exc:
         raise RuntimeError(f"OpenAI-compatible endpoint not reachable at {base} ({exc.reason})") from exc
-    return body["choices"][0]["message"]["content"]
+    except TimeoutError as exc:
+        raise RuntimeError(f"OpenAI-compatible endpoint timed out after {timeout}s ({model})") from exc
+    choice = body["choices"][0]["message"]
+    content = choice.get("content")
+    if content is None:
+        # e.g. the reasoning trace consumed the whole max_tokens budget.
+        raise RuntimeError(
+            f"model {model} returned an empty answer "
+            f"(reasoning_len={len(choice.get('reasoning_content') or '')})"
+        )
+    return content
 
 
 def cover_text_for_model(text: str, max_chars: int = 2400) -> str:
@@ -1522,6 +1552,8 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
                     mcfg.get("openai_base", "http://127.0.0.1:1234/v1"),
                     mcfg.get("api_key", "not-needed"),
                     int(mcfg.get("timeout", 180)),
+                    json_mode=bool(mcfg.get("openai_json_mode", True)),
+                    think=model_think_value(mcfg),
                 )
             model_fields = parse_json_object(raw)
             LOG.info("Model raw fields: %s", model_fields)
@@ -2148,6 +2180,7 @@ def write_fail_report(
                     min(int(mcfg.get("timeout", 180)), 45),
                     json_mode=False,
                     num_predict=400,
+                    think=model_think_value(mcfg),
                 )
         except Exception as exc:
             model_note = _fallback_fail_note(facts["error"], facts["fields"]) + f"\n(model report failed: {exc})"

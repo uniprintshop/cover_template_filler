@@ -25,7 +25,7 @@ pip install -r requirements.txt
 Edit `config.json`:
 
 - `watch_dir`, `output_dir`, `templates_dir`, `processed_dir`, `failed_dir`
-- `model.name` (Ollama tag, e.g. `qwen3:8b`)
+- `model` — pick the backend and its keys (see "Model backend" below)
 - `universities` — one entry per cover template, with aliases
 
 Put cover files in `templates_dir`, filename matching `universities[].template`.
@@ -52,11 +52,19 @@ Watch folder:
 python thesis_cover_watch.py --config config.json --scan-existing
 ```
 
-Ollama must already be running. To skip the model and use regex only:
+## Model backend
 
-```json
-"backend": "none"
-```
+The `model` block selects the backend with `"backend"`:
+
+- `"ollama"` — a local model. Set `name` (e.g. `qwen3:8b`) and `host`
+  (e.g. `http://192.168.x.x:11434`); optionally `num_ctx`, `num_thread`,
+  `keep_alive`. Ollama must already be running.
+- `"openai"` — any OpenAI-compatible HTTP endpoint (a hosted gateway or a
+  local server). Set `name` (the model id), `openai_base`
+  (e.g. `https://api.example.com/v1`) and `api_key`. `think: false` turns the
+  model's reasoning trace off so the token budget goes to the JSON answer.
+  `openai_json_mode` (default `true`) sends a JSON `response_format`.
+- `"none"` — skip the model and use the built-in regex heuristics only.
 
 ## Field rules
 
