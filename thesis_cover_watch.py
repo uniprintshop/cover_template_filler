@@ -2565,7 +2565,7 @@ def handle_pdf(pdf_path: Path, cfg: dict, origin: str) -> None:
 class PdfHandler(FileSystemEventHandler):
     def __init__(self, cfg: dict):
         self.cfg = cfg
-        self._seen: set[str] = set()
+        self._seen: dict[str, tuple[int, int] | None] = {}
 
     def on_created(self, event):  # noqa: N802
         if getattr(event, "is_directory", False):
@@ -2589,9 +2589,27 @@ class PdfHandler(FileSystemEventHandler):
         if path.suffix.lower() != ".pdf":
             return
         key = str(path.resolve()) if path.exists() else str(path)
-        if key in self._seen:
-            return
-        self._seen.add(key)
+        try:
+            stat = path.stat()
+            fingerprint = (stat.st_size, stat.st_mtime_ns)
+        except OSError:
+            fingerprint = None
+        seen_fp = self._seen.get(key)
+        if seen_fp is not None:
+            # Same path already handled. Only treat it as a duplicate event if
+            # the file itself is unchanged — re-dropping a file with the same
+            # name is a new job, not a duplicate.
+            if fingerprint is None:
+                # The file we already handled is gone (moved aside) — forget
+                # it and ignore this trailing event.
+                self._seen.pop(key, None)
+                return
+            if fingerprint == seen_fp:
+                return
+            LOG.info("Re-dropped file with a known name — processing again: %s", path.name)
+        self._seen[key] = fingerprint
+        if len(self._seen) > 4000:
+            self._seen = dict(list(self._seen.items())[-2000:])
         if len(self._seen) > 4000:
             self._seen = set(list(self._seen)[-2000:])
         settle = float(self.cfg.get("watch_settle_seconds", 1.5))
