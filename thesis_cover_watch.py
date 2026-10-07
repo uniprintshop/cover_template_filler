@@ -2277,6 +2277,28 @@ def _write_upf(template_path: Path, fields: dict, cfg: dict, out_path: Path) -> 
     return out_path
 
 
+_LAST_SETTLE: dict[str, float | None] = {"settle": None}
+_TIMING_WARN_S: dict[str, float] = {"read": 10.0, "model": 15.0, "write": 5.0, "total": 30.0}
+
+
+def _log_timings(
+    read: float, model: float, write: float, total: float, source: str, cfg: dict
+) -> None:
+    """One-line per-PDF stage timing so slow runs diagnose themselves."""
+    settle = _LAST_SETTLE.get("settle")
+    _LAST_SETTLE["settle"] = None
+    settle_txt = f"settle {settle:.1f}s, " if settle is not None else ""
+    LOG.info(
+        "timings: %sread %.1fs (source=%s), model %.1fs, write %.1fs, total %.1fs",
+        settle_txt, read, source, model, write, total,
+    )
+    warn = {**_TIMING_WARN_S, **(cfg.get("timing_warn_seconds") or {})}
+    for name, val in (("read", read), ("model", model), ("write", write), ("total", total)):
+        threshold = warn.get(name)
+        if threshold is not None and val > threshold:
+            LOG.warning("Slow %s stage: %.1fs (threshold %.0fs)", name, val, threshold)
+
+
 def process_pdf(pdf_path: Path, cfg: dict) -> list[Path]:
     LOG.info("Processing %s", pdf_path)
     ctx: dict = {"text": "", "source": "", "fields": {}}
@@ -2315,14 +2337,19 @@ def process_pdf(pdf_path: Path, cfg: dict) -> list[Path]:
 
 
 def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
+    t_start = time.monotonic()
+    t0 = time.monotonic()
     text, source = get_cover_text(pdf_path, cfg)
+    t_read = time.monotonic() - t0
     ctx["text"], ctx["source"] = text, source
     LOG.info("Cover text source=%s chars=%s", source, len(text))
     if not text.strip():
         raise RuntimeError("No text from first two pages (digital + OCR empty)")
 
     meta = pdf_metadata(pdf_path)
+    t0 = time.monotonic()
     fields = extract_fields(text, meta, cfg)
+    t_model = time.monotonic() - t0
     ctx["fields"] = fields
     LOG.info("Resolved fields: %s", {k: v for k, v in fields.items() if k not in {"candidates", "model_raw"}})
     if fields.get("risks"):
@@ -2379,6 +2406,7 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
 
     out_dir = Path(cfg["output_dir"])
     ensure_dirs(out_dir)
+    t_write0 = time.monotonic()
     _, _, sidecar = allocate_output_paths(out_dir, output_base_name(fields))
     written: list[Path] = []
     outputs: list[dict] = []
@@ -2475,6 +2503,10 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
         LOG.warning("Variant issues: %s", variant_errors)
     if not fields.get("ok_to_stamp", True):
         LOG.warning("Wrote %s but ok_to_stamp=false — review sidecar before production", written)
+    _log_timings(
+        t_read, t_model, time.monotonic() - t_write0, time.monotonic() - t_start,
+        source, cfg,
+    )
     return written
 
 
@@ -2563,9 +2595,11 @@ class PdfHandler(FileSystemEventHandler):
         if len(self._seen) > 4000:
             self._seen = set(list(self._seen)[-2000:])
         settle = float(self.cfg.get("watch_settle_seconds", 1.5))
+        t_event = time.monotonic()
         if not wait_until_stable(path, settle):
             LOG.warning("File never stabilized: %s", path)
             return
+        _LAST_SETTLE["settle"] = time.monotonic() - t_event
         handle_pdf(path, self.cfg, origin="watch")
 
 
@@ -2584,6 +2618,7 @@ def scan_existing(cfg: dict) -> None:
             unique.append(pdf)
     if not unique:
         LOG.info("No PDFs in %s", watch)
+    _LAST_SETTLE["settle"] = None  # scan has no settle wait
     for pdf in unique:
         handle_pdf(pdf, cfg, origin="scan")
 
