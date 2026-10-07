@@ -1454,7 +1454,9 @@ def cover_span(value: str, haystack: str) -> str:
     if not value:
         return ""
     if value in haystack:
-        return value
+        # Never hand back raw newlines: UPF glyph lists are single-line and a
+        # control char would be encoded as an empty glyph (corrupt file).
+        return re.sub(r"\s+", " ", value).strip()
     compact_v = re.sub(r"\s+", " ", value).strip()
     compact_h = re.sub(r"\s+", " ", haystack)
     if compact_v and compact_v in compact_h:
@@ -1874,6 +1876,9 @@ def encode_string_line(text: str, indent: str) -> str:
 def replace_list(block: TextBlock, new_lines: list[str]) -> str:
     indent = _list_indent(block)
     inner_indent = indent + "\t"
+    # A newline/tab inside a field would be encoded as an empty glyph row and
+    # crash the Prägen parser ("index out of array range"). Flatten whitespace.
+    new_lines = [re.sub(r"\s+", " ", t) for t in new_lines]
     if block.kind == "glyph":
         tag = r"List<TextLineDetails>:(\d+)\s*\{"
         pieces = []
@@ -2263,7 +2268,11 @@ def allocate_output_paths(out_dir: Path, base: str) -> tuple[Path, Path, Path]:
 
 def _write_upf(template_path: Path, fields: dict, cfg: dict, out_path: Path) -> Path:
     filled = fill_upf(_read_template(template_path), fields, cfg)
-    retry_io(lambda: out_path.write_text(filled, encoding="utf-8"), what=f"writing {out_path.name}")
+    # The prägen app requires CRLF line endings; writing LF-only produces
+    # files it cannot open. Normalize, then force CRLF before writing.
+    filled = filled.replace("\r\n", "\n").replace("\n", "\r\n")
+    data = filled.encode("utf-8")
+    retry_io(lambda: out_path.write_bytes(data), what=f"writing {out_path.name}")
     LOG.info("Wrote %s from %s", out_path.name, template_path.name)
     return out_path
 
