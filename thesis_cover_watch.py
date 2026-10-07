@@ -2636,6 +2636,55 @@ def _watcher_dead(observer) -> bool:
     return any(not e.is_alive() for e in observer.emitters)
 
 
+def _start_observer(cfg: dict, handler: PdfHandler):
+    """Create and start the file-system observer for the watch dir."""
+    use_polling = bool(cfg.get("watch_polling", True))
+    if use_polling and PollingObserver is not None:
+        observer = PollingObserver(timeout=float(cfg.get("watch_poll_interval", 5.0)))
+        LOG.info("Using polling observer (interval=%ss) for network share", cfg.get("watch_poll_interval", 5.0))
+    elif Observer is not None:
+        observer = Observer()
+        if use_polling:
+            LOG.warning("PollingObserver unavailable — falling back to inotify Observer (may miss events on network shares)")
+    else:
+        return None
+    observer.schedule(handler, str(Path(cfg["watch_dir"])), recursive=False)
+    observer.start()
+    return observer
+
+
+def _heal_observer(cfg: dict, handler: PdfHandler, observer, backoff: float):
+    """Replace a dead observer in-process (AFP dropouts kill the emitter).
+
+    Returns the new observer, or the old one if recreation failed. `backoff`
+    limits hot-looping when the share stays down; callers double it per failed
+    heal and reset it once a recreated watcher stays alive.
+    """
+    LOG.warning(
+        "File watcher died (AFP dropout?) — recreating in-process in %.0fs "
+        "(was: observer alive=%s, emitters=%s)",
+        backoff, observer.is_alive(),
+        [(type(e).__name__, e.is_alive()) for e in observer.emitters],
+    )
+    time.sleep(min(backoff, 60.0))
+    try:
+        observer.stop()
+    except Exception:
+        pass
+    try:
+        fresh = _start_observer(cfg, handler)
+    except Exception:
+        # e.g. the share is still unmounted: keep the old (dead) observer so
+        # the caller exits and systemd brings us back once it is up again.
+        LOG.exception("Could not recreate the file watcher — exiting for systemd restart")
+        return observer
+    if fresh is None:
+        LOG.error("Could not recreate the file watcher — exiting for systemd restart")
+        return observer
+    LOG.info("File watcher recreated — back to live event watching")
+    return fresh
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", type=Path, default=Path("config.json"))
@@ -2682,20 +2731,10 @@ def main() -> int:
         return 1
 
     handler = PdfHandler(cfg)
-    use_polling = bool(cfg.get("watch_polling", True))
-    observer = None
-    if use_polling and PollingObserver is not None:
-        observer = PollingObserver(timeout=float(cfg.get("watch_poll_interval", 5.0)))
-        LOG.info("Using polling observer (interval=%ss) for network share", cfg.get("watch_poll_interval", 5.0))
-    elif Observer is not None:
-        observer = Observer()
-        if use_polling:
-            LOG.warning("PollingObserver unavailable — falling back to inotify Observer (may miss events on network shares)")
-    else:
+    observer = _start_observer(cfg, handler)
+    if observer is None:
         LOG.error("watchdog is not installed. pip install watchdog  (or use --once)")
         return 1
-    observer.schedule(handler, str(Path(cfg["watch_dir"])), recursive=False)
-    observer.start()
     spawn_model_warmup(cfg)
     last_warm = time.monotonic()
     LOG.info("Watching %s  →  %s", cfg["watch_dir"], cfg["output_dir"])
@@ -2703,21 +2742,24 @@ def main() -> int:
     try:
         interval = float(cfg.get("watch_rescan_interval") or 0)
         last = time.time()
+        backoff = 2.0
         while True:
             time.sleep(1)
             if _watcher_dead(observer):
                 # A crash inside the observer or an emitter thread would
                 # otherwise leave the process running but deaf to new PDFs
-                # (e.g. after an AFP dropout). Exit so systemd's
-                # Restart=always brings up a fresh watcher.
-                LOG.error(
-                    "File watcher thread died (observer alive=%s, emitters=%s) — "
-                    "exiting so the service restarts",
-                    observer.is_alive(),
-                    [(type(e).__name__, e.is_alive()) for e in observer.emitters],
-                )
-                exit_code = 1
-                break
+                # (e.g. after an AFP dropout). Recreate the watcher in-place;
+                # only give up (and let systemd restart us) if that fails.
+                was_alive = observer.is_alive()
+                healed = _heal_observer(cfg, handler, observer, backoff)
+                if healed is observer and not was_alive:
+                    exit_code = 1
+                    break
+                observer = healed
+                backoff = min(backoff * 2, 60.0)
+                last = time.time()
+                continue
+            backoff = 2.0
             if interval and time.time() - last >= interval:
                 last = time.time()
                 try:
