@@ -2565,7 +2565,6 @@ def handle_pdf(pdf_path: Path, cfg: dict, origin: str) -> None:
 class PdfHandler(FileSystemEventHandler):
     def __init__(self, cfg: dict):
         self.cfg = cfg
-        self._seen: dict[str, tuple[int, int] | None] = {}
 
     def on_created(self, event):  # noqa: N802
         if getattr(event, "is_directory", False):
@@ -2588,30 +2587,10 @@ class PdfHandler(FileSystemEventHandler):
     def _handle_event(self, path: Path) -> None:
         if path.suffix.lower() != ".pdf":
             return
-        key = str(path.resolve()) if path.exists() else str(path)
-        try:
-            stat = path.stat()
-            fingerprint = (stat.st_size, stat.st_mtime_ns)
-        except OSError:
-            fingerprint = None
-        seen_fp = self._seen.get(key)
-        if seen_fp is not None:
-            # Same path already handled. Only treat it as a duplicate event if
-            # the file itself is unchanged — re-dropping a file with the same
-            # name is a new job, not a duplicate.
-            if fingerprint is None:
-                # The file we already handled is gone (moved aside) — forget
-                # it and ignore this trailing event.
-                self._seen.pop(key, None)
-                return
-            if fingerprint == seen_fp:
-                return
-            LOG.info("Re-dropped file with a known name — processing again: %s", path.name)
-        self._seen[key] = fingerprint
-        if len(self._seen) > 4000:
-            self._seen = dict(list(self._seen.items())[-2000:])
-        if len(self._seen) > 4000:
-            self._seen = set(list(self._seen)[-2000:])
+        # No event-dedup guard here: duplicate events for the same in-flight
+        # file are already safe — handle_pdf serializes on a lock, re-checks
+        # existence, and every processing path ends with move_aside. A stateful
+        # guard would only risk swallowing a genuine re-drop (same filename).
         settle = float(self.cfg.get("watch_settle_seconds", 1.5))
         t_event = time.monotonic()
         if not wait_until_stable(path, settle):
