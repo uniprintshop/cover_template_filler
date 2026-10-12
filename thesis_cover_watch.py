@@ -1902,7 +1902,32 @@ def replace_list(block: TextBlock, new_lines: list[str]) -> str:
     return block.raw[: m.start()] + new_list + block.raw[list_close + 1 :]
 
 
-def classify_blocks(blocks: list[TextBlock], placeholders: dict) -> dict[str, int]:
+def logo_block_indices(upf: str, blocks: list[TextBlock]) -> set[int]:
+    """Blocks that sit inside a background field (PrintArea) holding the logo.
+
+    Templates normally have one more background field than input fields; the
+    extra one carries the logo. Some templates instead put an extra input
+    (usually the university name) onto that logo field. Text living there is
+    branding — it must never receive the title role.
+    """
+    out: set[int] = set()
+    for pm in re.finditer(r"Object:PrintArea\s*\{", upf):
+        open_b = upf.find("{", pm.end() - 1)
+        close_b = _matching_brace(upf, open_b)
+        if close_b < 0 or close_b - open_b > 3_000_000:
+            continue  # brace desync or absurd span — do not trust it
+        span = upf[open_b:close_b]
+        if "Object:Image" not in span:
+            continue
+        for i, b in enumerate(blocks):
+            if open_b <= b.start and b.end <= close_b:
+                out.add(i)
+    return out
+
+
+def classify_blocks(
+    blocks: list[TextBlock], placeholders: dict, logo_idx: frozenset[int] | set[int] = frozenset()
+) -> dict[str, int]:
     """Map role -> original block index. Ignores empty / junk fields."""
     roles: dict[str, int] = {}
     deg_ph = [norm(x) for x in placeholders.get("degree", [])] + [norm(p) for p in DEGREE_PHRASES]
@@ -1932,8 +1957,19 @@ def classify_blocks(blocks: list[TextBlock], placeholders: dict) -> dict[str, in
         roles.setdefault("author_year", usable_idx[1])
         roles.pop("title", None)
     elif n >= 3:
-        roles.setdefault("title", usable_idx[1])
-        roles.setdefault("author_year", usable_idx[2])
+        # Title: never fabricate a positional guess. The only candidates are
+        # blocks not already claimed as degree/author and not sitting on the
+        # logo background field (branding text there — e.g. FOM's university
+        # name — must never receive the title). If several remain, the longest
+        # one is the title sample; the rest fall back to author/year.
+        claimed = set(roles.values())
+        cand = [i for i in usable_idx if i not in claimed and i not in logo_idx]
+        if cand:
+            roles["title"] = max(cand, key=lambda i: len(blocks[i].joined()))
+        if "author_year" not in roles:
+            rem = [i for i in usable_idx if i not in set(roles.values())]
+            if rem:
+                roles["author_year"] = rem[0]
     return roles
 
 
@@ -1943,7 +1979,8 @@ def fill_upf(template_text: str, fields: dict, cfg: dict) -> str:
         raise ValueError("No Object:TextDesignElement found in UPF")
 
     fillable = [b for b in blocks if not b.is_empty()]
-    roles = classify_blocks(blocks, cfg.get("placeholders", {}))
+    logo_idx = logo_block_indices(template_text, blocks)
+    roles = classify_blocks(blocks, cfg.get("placeholders", {}), logo_idx)
     LOG.info(
         "UPF text fields: total=%s fillable=%s roles=%s decoded=%s",
         len(blocks),
@@ -1959,11 +1996,22 @@ def fill_upf(template_text: str, fields: dict, cfg: dict) -> str:
 
     updates: dict[int, list[str]] = {}
 
+    def claim(idx: int, lines: list[str], role: str) -> None:
+        # Two roles landing on one field previously let the title silently
+        # overwrite the degree text. Never allow that.
+        if idx in updates:
+            LOG.warning(
+                "Role collision: %s and an earlier role both target UPF field %s — skipping %s",
+                role, idx, role,
+            )
+            return
+        updates[idx] = lines
+
     if "degree" in roles:
-        updates[roles["degree"]] = [fields["degree_text"]]
+        claim(roles["degree"], [fields["degree_text"]], "degree")
 
     if "title" in roles and fields.get("title"):
-        updates[roles["title"]] = [fields["title"]]
+        claim(roles["title"], [fields["title"]], "title")
 
     if "author_year" in roles:
         idx = roles["author_year"]
@@ -1988,7 +2036,15 @@ def fill_upf(template_text: str, fields: dict, cfg: dict) -> str:
             lead = " "
         new_lines[author_i] = fields["author"]
         new_lines[year_i] = lead + str(fields["year"])
-        updates[idx] = new_lines
+        claim(idx, new_lines, "author_year")
+
+    if fields.get("title") and "title" not in roles:
+        # Template has no title placeholder (e.g. only degree + author fields).
+        # Leave the title off rather than stamping it over another field.
+        LOG.warning("Template has no title field — title left off the cover")
+        risks = fields.setdefault("risks", [])
+        if "no_title_field_in_template" not in risks:
+            risks.append("no_title_field_in_template")
 
     out = template_text
     for idx in sorted(updates, reverse=True):
