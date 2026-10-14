@@ -663,7 +663,8 @@ def _alias_in_blob(alias: str, blob: str) -> bool:
 
 def _uni_aliases(uni: dict) -> list[str]:
     aliases = list(uni.get("aliases", []))
-    aliases.append(uni.get("id", ""))
+    # IDs are internal keys, often just a city ("leipzig", "jena"). They
+    # are not evidence that the cover names that city's university.
     aliases.append(Path(uni.get("template", "")).stem)
     return [a for a in aliases if a]
 
@@ -699,6 +700,16 @@ def cover_university_hits(text: str, universities: list[dict]) -> list[dict]:
                 best_len = len(norm(alias))
         if best_alias:
             hits.append({"uni": uni, "alias": best_alias, "alias_len": best_len})
+    # A city/acronym contained in a full school name is not a second school:
+    # "Wuppertal" inside "Kirchliche Hochschule Wuppertal", for example.
+    hits = [
+        hit for hit in hits
+        if not any(
+            other["alias_len"] > hit["alias_len"]
+            and _alias_in_blob(hit["alias"], norm(other["alias"]))
+            for other in hits
+        )
+    ]
     _UNI_HITS_CACHE[key] = (now, hits)
     return list(hits)
 
@@ -873,7 +884,7 @@ def distinctive_filename_tokens(name: str) -> list[str]:
 
 # Brief caches for data that is expensive to (re)scan on the AFP share or in
 # config: the plain-template catalog and per-cover university alias hits.
-_TPL_CACHE: dict[str, tuple[float, tuple[Path, ...]]] = {}
+_TPL_CACHE: dict[str, tuple[float, int, tuple[Path, ...]]] = {}
 _UNI_HITS_CACHE: dict[tuple[str, int], tuple[float, list[dict]]] = {}
 _CACHE_TTL = 30.0
 
@@ -886,13 +897,14 @@ def list_plain_templates(templates_dir: Path | None) -> list[Path]:
     # re-checks path.is_file() before using an entry.
     key = str(templates_dir)
     now = time.monotonic()
+    directory_mtime = templates_dir.stat().st_mtime_ns
     cached = _TPL_CACHE.get(key)
-    if cached is not None and now - cached[0] < _CACHE_TTL:
-        return list(cached[1])
+    if cached is not None and cached[1] == directory_mtime and now - cached[0] < _CACHE_TTL:
+        return list(cached[2])
     result = sorted(
         p for p in templates_dir.glob("*.upf") if p.is_file() and not is_title_template(p.name)
     )
-    _TPL_CACHE[key] = (now, tuple(result))
+    _TPL_CACHE[key] = (now, directory_mtime, tuple(result))
     return list(result)
 
 
@@ -905,7 +917,16 @@ def grounded_templates(
     catalog = list_plain_templates(templates_dir)
     if not catalog:
         return []
-    blob = norm(cover_text)
+    # A known institution's explicit membership takes precedence over city
+    # tokens. In particular, an institution with deleted templates must not
+    # inherit another school's logo just because both are in the same city.
+    hits = cover_university_hits(cover_text, universities or [])
+    if hits and templates_dir:
+        matched = {
+            p for hit in hits
+            for p in template_variants_for(hit["uni"], None, templates_dir)
+        }
+        return sorted(matched)
     chosen: list[Path] = []
     seen: set[str] = set()
 
@@ -921,16 +942,6 @@ def grounded_templates(
         if _full_template_name_in_blob(path.stem, cover_text):
             add(path)
 
-    for uni in universities or []:
-        if not any(_alias_in_blob(a, blob) for a in _uni_aliases(uni)):
-            continue
-        configured = uni.get("template") or ""
-        if configured and templates_dir:
-            add(templates_dir / configured)
-        needle = " ".join(_uni_aliases(uni))
-        for path in catalog:
-            if any(_alias_in_blob(tok, norm(needle)) for tok in distinctive_filename_tokens(path.name)):
-                add(path)
     return chosen
 
 
@@ -948,10 +959,7 @@ def _match_template_guess(guess: str, shortlist: list[Path]) -> Path | None:
     if len(fam) == 1:
         return fam[0]
     if len(fam) > 1:
-        numbered = [p for p in fam if re.match(r"^\d+-", p.name)]
-        if numbered:
-            return sorted(numbered, key=lambda p: p.name, reverse=True)[0]
-        return sorted(fam, key=lambda p: p.name)[0]
+        return None
     return None
 
 
@@ -1072,11 +1080,8 @@ def model_search_templates(
 def hardcoded_template_path(uni: dict | None, templates_dir: Path | None) -> Path | None:
     if not uni or not templates_dir:
         return None
-    name = (uni.get("template") or "").strip()
-    if not name:
-        return None
-    path = templates_dir / name
-    return path if path.is_file() else None
+    variants = template_variants_for(uni, None, templates_dir)
+    return variants[0] if variants else None
 
 
 def looks_like_supervisor(name: str) -> bool:
@@ -1610,7 +1615,13 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
     if "title_not_on_cover" in risks:
         notes.append("Title omitted: the model's title could not be matched to the PDF cover.")
     hard = hardcoded_template_path(uni, templates_dir)
-    if hard is not None:
+    if uni is not None and hard is None:
+        # A recognized school with no surviving configured file is a known
+        # missing template, not an invitation to search other schools' logos.
+        template_name = ""
+        risks.append("no_template_for_university")
+        notes.append(f"No configured template is available for {uni['id']}.")
+    elif hard is not None:
         template_name = hard.name
         uni = {**uni, "template": template_name}
     else:
@@ -1667,6 +1678,7 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
         or r == "author_looks_like_supervisor"
         or r.startswith("ambiguous_template:")
         or r == "no_template_on_cover"
+        or r == "no_template_for_university"
         or (r == "no_university_on_cover" and not template_name)
         or (r.startswith("ambiguous_university:") and not template_name)
         for r in risks
@@ -1683,7 +1695,7 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
 
     return {
         "university_id": uni["id"] if uni else "",
-        "university_template": template_name or (uni["template"] if uni else ""),
+        "university_template": template_name,
         "university_raw": uni_guess,
         "university_matches": uni_hits,
         "template_candidates": tpl_names,
@@ -2102,15 +2114,10 @@ def find_template_pair(chosen: str, templates_dir: Path) -> tuple[Path | None, P
 def template_variants_for(
     uni: dict | None, chosen: str | None, templates_dir: Path
 ) -> list[Path]:
-    """Every plain .upf template that belongs to the same university.
+    """Existing plain templates explicitly assigned to this institution.
 
-    Membership (either rule qualifies):
-    (a) every distinctive token of the template filename appears in the
-        university's aliases/template name — so "Wuppertal Groß-Logo" and
-        "Wuppertal Rund" both match a uni aliased "wuppertal", while
-        "Berufskolleg Barmen" does not match a uni aliased only "barmen";
-    (b) it shares the chosen template's filename family (Muster / Muster-2 …).
-    The chosen template is always first when it exists.
+    `templates` lists approved variants; without it only `template` belongs
+    to the school. A filename/city similarity is not proof of membership.
     """
     out: list[Path] = []
     seen: set[str] = set()
@@ -2123,20 +2130,15 @@ def template_variants_for(
             seen.add(key)
             out.append(p)
 
-    add(templates_dir / chosen if chosen else None)
-
-    alias_blob = norm(" ".join(_uni_aliases(uni))) if uni else ""
-    family = template_family(chosen) if chosen else None
-    for path in list_plain_templates(templates_dir):
-        toks = [norm(t) for t in distinctive_filename_tokens(path.name)]
-        if toks and alias_blob and all(t in alias_blob for t in toks):
-            # Require at least one long identifying token, so a template whose
-            # ONLY distinctive token is the city ("Universität_zu_köln") is
-            # not confused with another school in the same city (TH Köln).
-            if any(len(t) >= 6 for t in toks):
-                add(path)
-        elif family is not None and template_family(path.name) == family:
-            add(path)
+    names = (
+        uni.get("templates", [uni.get("template")])
+        if uni is not None else [chosen]
+    )
+    if chosen and chosen in names:
+        add(templates_dir / chosen)
+    for name in names:
+        if name:
+            add(templates_dir / name)
     return out
 
 
@@ -2434,6 +2436,13 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
 
     if not fields["author"] or not fields["year"]:
         raise RuntimeError(f"Missing author or year: author={fields['author']!r} year={fields['year']!r}")
+
+    if "no_template_for_university" in fields.get("risks", []):
+        raise RuntimeError(
+            f"No configured template is available for {fields['university_id']!r}. "
+            "Its templates were removed or renamed; update this institution's "
+            "template/templates entries in config.json."
+        )
 
     templates_dir = Path(cfg["templates_dir"])
     uni_obj = next(

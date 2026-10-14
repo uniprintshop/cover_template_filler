@@ -67,11 +67,9 @@
         "th köln",
         "technology arts sciences",
         "th koln",
-        "cologne institute of technology",
-        "rheinische fachhochschule köln",
-        "rheinische hochschule köln"
+        "cologne institute of technology"
       ],
-      "template": "TH_Köln.upf"
+      "template": "TH_Köln_Technology_Arts_Sciences.upf"
     },
     {
       "id": "iu",
@@ -90,12 +88,11 @@
         "bergische universität wuppertal",
         "buw",
         "wuppertal",
-        "wuppertal schwebebahn",
-        "din a5",
         "schumpeter",
         "fakultät für maschinenbau und sicherheitstechnik"
       ],
-      "template": "Wuppertal_universität.upf"
+      "template": "Wuppertal_universität.upf",
+      "templates": ["Wuppertal_universität.upf", "Wuppertal_Universität_Rund.upf", "Wuppertal_Universität_DIN-A5.upf", "Wuppertal_Universität_Schumpeter.upf"]
     },
     {
       "id": "bremen",
@@ -127,7 +124,8 @@
         "duale hochschule baden württemberg",
         "dhbw villingen schwenningen"
       ],
-      "template": "DHBW_CAS.upf"
+      "template": "DHBW_CAS.upf",
+      "templates": ["DHBW_CAS.upf", "DHBW_Duale_Hochschule_Baden-Württemberg.upf", "DHBW_Villingen-Schwenningen.upf"]
     },
     {
       "id": "duesseldorf-hwk",
@@ -136,7 +134,8 @@
         "hwk düsseldorf",
         "hwk duesseldorf"
       ],
-      "template": "Düsseldorf_HWK.upf"
+      "template": "Düsseldorf_HWK.upf",
+      "templates": ["Düsseldorf_HWK.upf", "HWK_Düsseldorf.upf"]
     },
     {
       "id": "eu-fh",
@@ -145,7 +144,8 @@
         "eu fh",
         "eufh"
       ],
-      "template": "Europäische_FH.upf"
+      "template": "Europäische_FH.upf",
+      "templates": ["Europäische_FH.upf", "Europäische_FH_2.upf"]
     },
     {
       "id": "hrw",
@@ -162,7 +162,7 @@
         "internationale berufsakademie",
         "iba"
       ],
-      "template": "IBA_Muster.upf"
+      "template": "IBA_University.upf"
     },
     {
       "id": "barmen",
@@ -171,7 +171,8 @@
         "europaschule barmen",
         "barmen"
       ],
-      "template": "Barmen_Berufskolleg_Europaschule.upf"
+      "template": "",
+      "templates": []
     },
     {
       "id": "Münster-FH",
@@ -223,7 +224,8 @@
         "akkon",
         "hochschule für humanwissenschaften"
       ],
-      "template": "Akkon_Hochschule.upf"
+      "template": "Akkon_Hochschule.upf",
+      "templates": ["Akkon_Hochschule.upf", "Hochschule_für_Humanwissenschaften.upf"]
     },
     {
       "id": "anhalt-hochschule",
@@ -248,7 +250,8 @@
         "universität augsburg",
         "uni augsburg"
       ],
-      "template": "Augsburg_Universität.upf"
+      "template": "Augsburg_Universität.upf",
+      "templates": ["Augsburg_Universität.upf", "Augsburg_Universität_2.upf"]
     },
     {
       "id": "bamberg-universität",
@@ -264,7 +267,8 @@
       "aliases": [
         "berufskolleg elberfeld"
       ],
-      "template": "Berufskolleg_Elberfeld.upf"
+      "template": "",
+      "templates": []
     },
     {
       "id": "berufskolleg-ennepetal",
@@ -388,7 +392,8 @@
         "hochschule döpfer",
         "döpfer köln"
       ],
-      "template": "Döpfer_Hochschule.upf"
+      "template": "Döpfer_Hochschule.upf",
+      "templates": ["Döpfer_Hochschule.upf", "Döpfer_Hochschule_Köln.upf", "HSD Döpfer.upf"]
     },
     {
       "id": "tu-dortmund",
@@ -421,9 +426,12 @@
         "universität duisburg essen",
         "uni duisburg essen",
         "duisburg essen",
-        "ude"
+        "ude",
+        "mercator school of management",
+        "mercator"
       ],
-      "template": "Duisburg_Essen_Universität.upf"
+      "template": "Duisburg_Essen_Universität.upf",
+      "templates": ["Duisburg_Essen_Universität.upf", "Essen-Mercator-Muster.upf", "Mercator.upf"]
     },
     {
       "id": "hhu",
@@ -484,7 +492,8 @@
         "esslingen hochschule",
         "hochschule esslingen bilstein"
       ],
-      "template": "Hochschule_Esslingen.upf"
+      "template": "Hochschule_Esslingen.upf",
+      "templates": ["Hochschule_Esslingen.upf", "Hochschule_Esslingen_Bilstein.upf"]
     },
     {
       "id": "fau",
@@ -494,7 +503,7 @@
         "universität erlangen nürnberg",
         "fau erlangen nürnberg"
       ],
-      "template": "FAU_Friedrich-Alexander-Universität.upf"
+      "template": "FAU_Friedrich-Alexander-Universität_neues_Logo.upf"
     },
     {
       "id": "fliedner-fh",
@@ -502,7 +511,8 @@
         "fliedner fachhochschule",
         "fliedner"
       ],
-      "template": "Düsseldorf_Fliedner_FH.upf"
+      "template": "Düsseldorf_Fliedner_FH_neues_Logo.upf",
+      "templates": ["Düsseldorf_Fliedner_FH_neues_Logo.upf", "Düsseldorf_Fliedner_FH_neues_Logo_2.upf"]
     },
     {
       "id": "fom",
@@ -536,7 +546,7 @@
         "föv nrw",
         "fh föv nrw"
       ],
-      "template": "FH_föV_NRW.upf"
+      "template": "HSPV_NRW.upf"
     },
     {
       "id": "flensburg-hochschule",
@@ -580,7 +590,8 @@
         "hamburg fern hochschule",
         "fern hs hamburg"
       ],
-      "template": "Hamburg_Fern-Hochschule.upf"
+      "template": "Hamburg_Fern-Hochschule.upf",
+      "templates": ["Hamburg_Fern-Hochschule.upf", "Hamburg_Fern-Hochschule_neues_Logo.upf"]
     },
     {
       "id": "hamburger-konservatorium",
@@ -607,7 +618,7 @@
         "hochschule für finanzen nordkirchen",
         "hochschule für finanzen nrw siegel"
       ],
-      "template": "Hochschule_für_Finanzen_NRW.upf"
+      "template": "Hochschule_für_Finanzen_NRW_Nordkirchen.upf"
     },
     {
       "id": "heidelberg",
@@ -642,7 +653,8 @@
         "hspv",
         "aspv"
       ],
-      "template": "HSPV_NRW.upf"
+      "template": "HSPV_NRW.upf",
+      "templates": ["HSPV_NRW.upf", "HSPV_NRW_ASPV.upf"]
     },
     {
       "id": "hs-bund",
@@ -660,7 +672,8 @@
         "hochschule für technik wirtschaft und kultur",
         "htwk leipzig"
       ],
-      "template": "HTWK.upf"
+      "template": "",
+      "templates": []
     },
     {
       "id": "htw-saar",
@@ -686,7 +699,7 @@
         "international school of management",
         "ism"
       ],
-      "template": "ISM_1.upf"
+      "template": "Universität_ISM.upf"
     },
     {
       "id": "jade-hochschule",
@@ -749,7 +762,8 @@
         "universität koblenz landau",
         "koblenz landau"
       ],
-      "template": "Koblenz_Universität.upf"
+      "template": "Koblenz_Universität.upf",
+      "templates": ["Koblenz_Universität.upf", "Koblenz-Landau_Universität.upf"]
     },
     {
       "id": "konstanz",
@@ -845,7 +859,8 @@
         "uni mannheim",
         "mannheim university"
       ],
-      "template": "Mannheim-Universität.upf"
+      "template": "Mannheim-Universität.upf",
+      "templates": ["Mannheim-Universität.upf", "Mannheim_Universität_2.upf"]
     },
     {
       "id": "mannheim-hochschule",
@@ -868,9 +883,11 @@
       "id": "mediadesign",
       "aliases": [
         "mediadesign hochschule",
-        "mediadesign"
+        "mediadesign",
+        "mdh"
       ],
-      "template": "Mediadesign_Hochschule.upf"
+      "template": "Mediadesign_Hochschule.upf",
+      "templates": ["Mediadesign_Hochschule.upf", "mdh - Universität.upf"]
     },
     {
       "id": "medical-school-chirurgia",
@@ -893,9 +910,13 @@
       "aliases": [
         "universität münster",
         "westfälische wilhelms universität münster",
-        "uni münster"
+        "uni münster",
+        "university of münster",
+        "münster school of business",
+        "university of münster school of business"
       ],
-      "template": "Münster_Universität.upf"
+      "template": "Münster_Universität.upf",
+      "templates": ["Münster_Universität.upf", "Münster-School of Business - Muster.upf"]
     },
     {
       "id": "hochschule-niederrhein",
@@ -1014,7 +1035,8 @@
         "isse industrial sales and service engineering",
         "isse"
       ],
-      "template": "RUB_Ruhr-Universität.upf"
+      "template": "RUB_Ruhr-Universität.upf",
+      "templates": ["RUB_Ruhr-Universität.upf", "RUB_Ruhr-Universität_2.upf", "RUB_ISSE_Industrial-Sales-Service-Engineering.upf"]
     },
     {
       "id": "bochum-hochschule",
@@ -1024,7 +1046,8 @@
         "bochum university of applied sciences",
         "campus velbert"
       ],
-      "template": "Bochum_Hochschule.upf"
+      "template": "Bochum_Hochschule.upf",
+      "templates": ["Bochum_Hochschule.upf", "Bochum_Hochschule_Campus_Velbert.upf", "Bochum_Hochschule_Technik-Wirtschaft-Gesundheit.upf"]
     },
     {
       "id": "bochum-evh",
@@ -1033,7 +1056,8 @@
         "evh bochum",
         "evangelische hochschule bochum"
       ],
-      "template": "Bochum_EVH_Evangelische_Hochschule.upf"
+      "template": "Bochum_EVH_Evangelische_Hochschule.upf",
+      "templates": ["Bochum_EVH_Evangelische_Hochschule.upf", "Rheinland-Evangelisch.upf"]
     },
     {
       "id": "thga",
@@ -1085,7 +1109,8 @@
         "srh fernhochschule",
         "the mobile university"
       ],
-      "template": "SRH_Hochschule.upf"
+      "template": "SRH_Hochschule.upf",
+      "templates": ["SRH_Hochschule.upf", "SRH_Hochschule_Logo.upf", "SRH_Fernhochschule.upf", "SRH_Berlin.upf"]
     },
     {
       "id": "kosice",
@@ -1168,7 +1193,8 @@
         "university of europe",
         "university of europe for applied sciences"
       ],
-      "template": "University_of_Europe.upf"
+      "template": "University_of_Europe.upf",
+      "templates": ["University_of_Europe.upf", "University_of_Europe_2.upf"]
     },
     {
       "id": "waldorf-institut-witten",
@@ -1291,6 +1317,37 @@
         "neubrandenburg"
       ],
       "template": "Neubrandenburg_Hochschule.upf"
-    }
+    },
+    {"id": "rheinische-hochschule-koeln", "aliases": ["rheinische fachhochschule köln", "rheinische hochschule köln", "rfh köln", "rh köln"], "template": "TH_Köln_Rheinische_FH.upf", "templates": ["TH_Köln_Rheinische_FH.upf", "TH_Köln_Rheinische_FH_alt.upf"]},
+    {"id": "berlin-bht", "aliases": ["berliner hochschule für technik", "beuth hochschule für technik", "bht berlin"], "template": "Berlin_Hochschule_für_Technik.upf"},
+    {"id": "berlin-hwr", "aliases": ["hochschule für wirtschaft und recht berlin", "hwr berlin"], "template": "Berlin_Hochschule_für_Wirtschaft_und_Recht.upf"},
+    {"id": "berlin-humboldt", "aliases": ["humboldt universität zu berlin", "humboldt universität berlin", "hu berlin"], "template": "Berlin_Humboldt-Universität.upf"},
+    {"id": "bonn-universitaet", "aliases": ["universität bonn", "rheinische friedrich wilhelms universität bonn", "uni bonn"], "template": "Bonn_Universität.upf", "templates": ["Bonn_Universität.upf", "Bonn-Geo Muster.upf"]},
+    {"id": "cusanus", "aliases": ["cusanus hochschule", "cusanus"], "template": "Cusanus HS Muster.upf"},
+    {"id": "dhge", "aliases": ["duale hochschule gera eisenach", "dhge"], "template": "Gera-Eisenach_Duale_Hochschule.upf", "templates": ["Gera-Eisenach_Duale_Hochschule.upf", "DHGE-Hochschule.upf"]},
+    {"id": "ebc", "aliases": ["ebc hochschule", "ebc düsseldorf"], "template": "Düsseldorf EBC-HS Muster.upf"},
+    {"id": "isd", "aliases": ["international school of düsseldorf", "international school of duesseldorf", "isd"], "template": "Düsseldorf-ISD Muster.upf"},
+    {"id": "essen-bkm", "aliases": ["berufskolleg mitte essen", "berufskolleg mitte der stadt essen", "essen bkm"], "template": "Essen-BKM.upf"},
+    {"id": "essen-hbk", "aliases": ["hochschule der bildenden künste essen", "hbk essen"], "template": "Essen-HBK.upf"},
+    {"id": "stralsund", "aliases": ["hochschule stralsund", "stralsund university of applied sciences", "host"], "template": "HOST.upf"},
+    {"id": "haspel-berufskolleg", "aliases": ["berufskolleg am haspel", "berufskolleg haspel"], "template": "Haspel_Berufskolleg.upf"},
+    {"id": "fresenius", "aliases": ["hochschule fresenius", "fresenius university of applied sciences"], "template": "Hochschule_Fresenius.upf"},
+    {"id": "imc", "aliases": ["imc krems", "imc fachhochschule krems", "imc"], "template": "IMC Muster.upf"},
+    {"id": "ita-wegman", "aliases": ["ita wegman berufskolleg", "ita wegmann berufskolleg"], "template": "ITA Wegmann Berufskolleg.upf"},
+    {"id": "impulse", "aliases": ["impulse e.v.", "impulse e. v."], "template": "Impulse e.V..upf"},
+    {"id": "kaiserslautern-hochschule", "aliases": ["hochschule kaiserslautern", "kaiserslautern university of applied sciences"], "template": "Kaiserslautern_Hochschule.upf"},
+    {"id": "lvr", "aliases": ["lvr", "landschaftsverband rheinland"], "template": "LVR-Muster.upf"},
+    {"id": "mainz-universitaet", "aliases": ["johannes gutenberg universität mainz", "universität mainz", "jgu mainz"], "template": "Mainz_Johannes-Gutenberg-Universität.upf"},
+    {"id": "muenster-icbf", "aliases": ["internationales centrum für begabungsforschung", "icbf"], "template": "Münster-ICBF.upf"},
+    {"id": "schornsteinfeger", "aliases": ["schornsteinfeger"], "template": "Schornsteinfeger.upf"},
+    {"id": "st-remigiushaus", "aliases": ["st. remigiushaus", "st remigiushaus"], "template": "St. Remigiushaus.upf"},
+    {"id": "th-bingen", "aliases": ["technische hochschule bingen", "th bingen"], "template": "TH_Bingen.upf"},
+    {"id": "thyssenkrupp-bilstein", "aliases": ["thyssenkrupp bilstein"], "template": "Thyssenkrupp Bilstein Muster.upf"},
+    {"id": "tuebingen", "aliases": ["universität tübingen", "eberhard karls universität tübingen", "uni tübingen"], "template": "Tübingen_Universität.upf"},
+    {"id": "rheinmain", "aliases": ["hochschule rheinmain", "rheinmain university of applied sciences"], "template": "Wiesbaden_Hochschule_RheinMain.upf"},
+    {"id": "wuerzburg-universitaet", "aliases": ["julius maximilians universität würzburg", "universität würzburg", "uni würzburg"], "template": "Würzburg_Julius-Maximilians-Universität.upf"},
+    {"id": "bwv", "aliases": ["bwv"], "template": "bwv.upf"},
+    {"id": "polizei-nrw", "aliases": ["polizei nrw", "polizei nordrhein westfalen"], "template": "Polizei NRW.upf"},
+    {"id": "wuppertal-schwebebahn", "aliases": ["wuppertaler schwebebahn", "wuppertal schwebebahn"], "template": "Wuppertal_Schwebebahn_LOGO.upf"}
   ]
 }

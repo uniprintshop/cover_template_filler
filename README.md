@@ -26,9 +26,29 @@ Edit `config.json`:
 
 - `watch_dir`, `output_dir`, `templates_dir`, `processed_dir`, `failed_dir`
 - `model` — pick the backend and its keys (see "Model backend" below)
-- `universities` — one entry per cover template, with aliases
+- `universities` — one entry per institution, with aliases
 
 Put cover files in `templates_dir`, filename matching `universities[].template`.
+
+For institutions with several approved regular covers, add a `templates` list
+containing their exact filenames (including the primary `template`). Every
+existing file in that list is produced; title siblings are found separately.
+Without a list, only `template` is used. A shared city name never makes another
+institution's template a variant. TH Köln and Rheinische Hochschule Köln have
+separate entries even though the historical filenames both start with `TH_Köln`.
+
+After renaming or deleting a file, update these references in `config.json`
+and restart the watcher to load the new configuration. If the primary file
+disappears, another existing approved variant is used. If none remain, the
+job fails with `no_template_for_university`; it does not search for a different
+school's logo. An entry with `"template": "", "templates": []` records an
+institution whose templates have been removed.
+
+Selection regression checks:
+
+```bash
+.venv/bin/python -m unittest discover -s tests
+```
 
 Optional but useful: in each UPF change the dummy strings to:
 
