@@ -138,16 +138,16 @@ def retry_io(fn, *, what: str, attempts: int = 4, delay: float = 5.0):
 def wait_until_stable(path: Path, settle: float) -> bool:
     last = -1
     stable_since = None
-    deadline = time.time() + 60
-    while time.time() < deadline:
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
         try:
             size = path.stat().st_size
         except FileNotFoundError:
             return False
         if size == last and size > 0:
             if stable_since is None:
-                stable_since = time.time()
-            elif time.time() - stable_since >= settle:
+                stable_since = time.monotonic()
+            elif time.monotonic() - stable_since >= settle:
                 return True
         else:
             stable_since = None
