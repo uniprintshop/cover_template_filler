@@ -25,6 +25,8 @@ pip install -r requirements.txt
 Edit `config.json`:
 
 - `watch_dir`, `output_dir`, `templates_dir`, `processed_dir`, `failed_dir`
+- `notify` — desktop popups (via `notify-send`) when a cover starts, is
+  created, or fails; set `false` to disable
 - `model` — pick the backend and its keys (see "Model backend" below)
 - `universities` — one entry per institution, with aliases
 

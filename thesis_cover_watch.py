@@ -15,6 +15,7 @@ import json
 import logging
 import re
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -153,7 +154,10 @@ def wait_until_stable(path: Path, settle: float) -> bool:
             last = size
         time.sleep(0.2)
     try:
-        return path.exists() and path.stat().st_size > 0
+        # The deadline passed while the file kept changing. Accept it only
+        # if the writes have actually stopped; otherwise a slow copy is
+        # still in flight and the periodic rescan will retry it later.
+        return stable_since is not None and path.stat().st_size > 0
     except FileNotFoundError:
         return False
 
@@ -2568,6 +2572,15 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
         LOG.warning("Variant issues: %s", variant_errors)
     if not fields.get("ok_to_stamp", True):
         LOG.warning("Wrote %s but ok_to_stamp=false — review sidecar before production", written)
+    if fields.get("ok_to_stamp", True):
+        notify(
+            cfg,
+            "Deckblatt erstellt",
+            f"{fields['author']} ({fields['year']}) — "
+            f"{fields.get('university_raw') or fields.get('university_id') or '?'} — "
+            f"{len(written)} Vorlage(n)",
+            app="Thesis Cover – fertig",
+        )
     _log_timings(
         t_read, t_model, time.monotonic() - t_write0, time.monotonic() - t_start,
         source, cfg,
@@ -2598,6 +2611,40 @@ def move_aside(pdf_path: Path, dest_dir: Path) -> Path | None:
 
 _PROCESS_LOCK = threading.Lock()
 
+_NOTIFY_MISSING_NOTED = False
+
+
+def notify(cfg: dict, summary: str, body: str, urgent: bool = False, app: str = "Thesis Cover") -> None:
+    """Best-effort desktop popup (notify-send) for the shop screen.
+
+    A missing binary or a failed send must never affect cover production —
+    this is pure convenience, so every failure path is silent.
+    Disable with "notify": false in config.json.
+
+    Each popup type uses its own app name: GNOME coalesces popups that
+    share an app name into one (the newest hides the oldest), which would
+    block a fresh result popup behind an un-dismissed start popup.
+    Distinct names let the types coexist, while a new popup of the same
+    type still replaces an older un-dismissed one.
+    """
+    global _NOTIFY_MISSING_NOTED
+    if not cfg.get("notify", True):
+        return
+    if not shutil.which("notify-send"):
+        if not _NOTIFY_MISSING_NOTED:
+            _NOTIFY_MISSING_NOTED = True
+            LOG.info("notify-send not found — desktop notifications disabled")
+        return
+    try:
+        subprocess.run(
+            ["notify-send", "--app-name", app, summary, body]
+            + (["--urgency", "critical"] if urgent else []),
+            timeout=5,
+            check=False,
+        )
+    except Exception:
+        pass
+
 
 def handle_pdf(pdf_path: Path, cfg: dict, origin: str) -> None:
     """Process one PDF and move it aside; never raises.
@@ -2611,12 +2658,20 @@ def handle_pdf(pdf_path: Path, cfg: dict, origin: str) -> None:
         if not pdf_path.exists():
             LOG.info("Skipping %s (%s) — already handled", pdf_path.name, origin)
             return
+        notify(cfg, "Cover wird bearbeitet", pdf_path.name, app="Thesis Cover – läuft")
         dest: str | None = None
         try:
             process_pdf(pdf_path, cfg)
             dest = cfg.get("processed_dir")
         except Exception as exc:
             LOG.error("Failed on %s (%s): %s", pdf_path, origin, exc)
+            notify(
+                cfg,
+                "Fehler – kein Cover erstellt",
+                f"{pdf_path.name}: {str(exc).splitlines()[0][:200]}",
+                urgent=True,
+                app="Thesis Cover – Fehler",
+            )
             dest = cfg.get("failed_dir")
         if not dest:
             return
@@ -2659,7 +2714,10 @@ class PdfHandler(FileSystemEventHandler):
         settle = float(self.cfg.get("watch_settle_seconds", 1.5))
         t_event = time.monotonic()
         if not wait_until_stable(path, settle):
-            LOG.warning("File never stabilized: %s", path)
+            # Either the file vanished while we waited (already handled
+            # elsewhere) or it is still being copied; the periodic rescan
+            # will pick it up once it is complete.
+            LOG.warning("File did not stabilize, skipping for now: %s", path)
             return
         _LAST_SETTLE["settle"] = time.monotonic() - t_event
         handle_pdf(path, self.cfg, origin="watch")
@@ -2680,8 +2738,19 @@ def scan_existing(cfg: dict) -> None:
             unique.append(pdf)
     if not unique:
         LOG.info("No PDFs in %s", watch)
-    _LAST_SETTLE["settle"] = None  # scan has no settle wait
+        return
+    settle = float(cfg.get("watch_settle_seconds", 1.5))
     for pdf in unique:
+        # A file whose size is still changing is being copied over the
+        # network right now. Parsing it mid-write would fail ("No /Root
+        # object") and exile the still-arriving file into failed/. Skip
+        # it; the next rescan picks it up once the copy has finished.
+        t_scan = time.monotonic()
+        if not wait_until_stable(pdf, settle):
+            LOG.info("Skipping %s (scan) — file still changing or gone", pdf.name)
+            _LAST_SETTLE["settle"] = None
+            continue
+        _LAST_SETTLE["settle"] = time.monotonic() - t_scan
         handle_pdf(pdf, cfg, origin="scan")
 
 
