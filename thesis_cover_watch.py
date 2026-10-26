@@ -2510,7 +2510,14 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
                 LOG.info("No title extracted — skipping TITLE variant %s", titled.name)
             elif titled is not None:
                 title_base = output_base_name(fields)
-                if not single:
+                if single:
+                    # One template: mark the title foil with a stable
+                    # "_Titel" suffix. Reusing the plain base would collide
+                    # with the just-written plain cover and fall back to
+                    # "_1", so single-template schools would end up with
+                    # "…_1.upf" while multi-template ones got "…_Titel.upf".
+                    title_base = f"{title_base}_Titel"
+                else:
                     title_base = f"{title_base}_{safe_stem(titled.stem)}"
                 title_path, _t2, _s2 = allocate_output_paths(out_dir, title_base)
                 try:
