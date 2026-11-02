@@ -166,16 +166,6 @@
       "template": "IBA_University.upf"
     },
     {
-      "id": "barmen",
-      "aliases": [
-        "berufskolleg barmen",
-        "europaschule barmen",
-        "barmen"
-      ],
-      "template": "",
-      "templates": []
-    },
-    {
       "id": "Münster-FH",
       "aliases": [
         "fh münster",
@@ -262,14 +252,6 @@
         "otto friedrich universität bamberg"
       ],
       "template": "Bamberg_Universität.upf"
-    },
-    {
-      "id": "berufskolleg-elberfeld",
-      "aliases": [
-        "berufskolleg elberfeld"
-      ],
-      "template": "",
-      "templates": []
     },
     {
       "id": "berufskolleg-ennepetal",
@@ -541,15 +523,6 @@
       "template": "FHDW.upf"
     },
     {
-      "id": "foev-nrw",
-      "aliases": [
-        "fachhochschule für öffentliche verwaltung nrw",
-        "föv nrw",
-        "fh föv nrw"
-      ],
-      "template": "HSPV_NRW.upf"
-    },
-    {
       "id": "flensburg-hochschule",
       "aliases": [
         "hochschule flensburg",
@@ -665,16 +638,6 @@
         "hs bund"
       ],
       "template": "Hochschule_des_Bundes.upf"
-    },
-    {
-      "id": "htwk",
-      "aliases": [
-        "htwk",
-        "hochschule für technik wirtschaft und kultur",
-        "htwk leipzig"
-      ],
-      "template": "",
-      "templates": []
     },
     {
       "id": "htw-saar",

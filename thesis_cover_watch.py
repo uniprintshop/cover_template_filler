@@ -78,39 +78,6 @@ def load_config(path: Path) -> dict:
     return data
 
 
-def persist_learned_template(
-    cfg: dict,
-    uni_id: str,
-    template_name: str,
-    extra_aliases: list[str],
-) -> None:
-    """Write the model's .upf choice into universities[].template for next time."""
-    unis = cfg.setdefault("universities", [])
-    found = None
-    for u in unis:
-        if u.get("id") == uni_id:
-            u["template"] = template_name
-            found = u
-            break
-    if found is None:
-        aliases: list[str] = []
-        seen = set()
-        for a in extra_aliases:
-            k = norm(str(a))
-            if k and k not in seen:
-                seen.add(k)
-                aliases.append(str(a).strip())
-        unis.append({"id": uni_id, "aliases": aliases, "template": template_name})
-    path = cfg.get("_config_path")
-    if not path:
-        LOG.warning("Learned %s for %s but config path is unknown — not saved", template_name, uni_id)
-        return
-    on_disk = json.loads(Path(path).read_text(encoding="utf-8"))
-    on_disk["universities"] = unis
-    Path(path).write_text(json.dumps(on_disk, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    LOG.info("Remembered template %s for %s in %s", template_name, uni_id, path)
-
-
 def ensure_dirs(*paths: Path) -> None:
     for p in paths:
         p.mkdir(parents=True, exist_ok=True)
@@ -665,211 +632,64 @@ def _alias_in_blob(alias: str, blob: str) -> bool:
     return len(a) >= 7 and a in re.sub(r"\s+", "", blob)
 
 
-def _uni_aliases(uni: dict) -> list[str]:
-    aliases = list(uni.get("aliases", []))
-    # IDs are internal keys, often just a city ("leipzig", "jena"). They
-    # are not evidence that the cover names that city's university.
-    aliases.append(Path(uni.get("template", "")).stem)
-    return [a for a in aliases if a]
+# Lines that name where someone lives or was born, not the awarding
+# institution. A postal address or a birthplace ("Geboren ... in Wuppertal")
+# mentions a city without naming a university, so it must not count as
+# evidence for that city's school — nor as the publishing year.
+_ADDRESS_LINE_RE = re.compile(
+    r"(?i)^\s*(?:postadresse|postanschrift|wohnadresse|wohnanschrift|anschrift)\s*:"
+)
+_BIRTH_LINE_RE = re.compile(
+    r"(?i)^\s*(?:geboren\b|geb\.\b|geburtsort\b|born\b|date\s+of\s+birth)"
+)
 
 
-def cover_university_hits(text: str, universities: list[dict]) -> list[dict]:
-    """Every config university whose alias actually appears on the cover.
+def cover_matching_blob(text: str) -> str:
+    """Cover text reduced to institution evidence: drop address/birth lines.
 
-    141 universities x several aliases x regex scans over the cover blob cost
-    ~0.3s; this runs twice per PDF (hardcoded pre-check + resolution), so a
-    short per-text cache is kept. The universities list is stable in-process.
+    Keep the rest of the cover intact for author/title/model checks; only the
+    lines that name a residence or birthplace are removed, since they mention
+    a city (or a year) that is not the awarding school.
     """
-    key = (norm(text), id(universities))
-    now = time.monotonic()
-    cached = _UNI_HITS_CACHE.get(key)
-    if cached is not None and now - cached[0] < _CACHE_TTL:
-        return list(cached[1])
-    # Explicit postal-address lines identify where someone lives, not the
-    # awarding school. Keep them in the full cover for other field checks.
-    blob = norm("\n".join(
-        line for line in text.splitlines()
-        if not re.match(
-            r"(?i)^\s*(?:postadresse|postanschrift|wohnadresse|wohnanschrift|anschrift)\s*:",
-            line,
-        )
-    ))
-    hits: list[dict] = []
-    for uni in universities:
-        best_alias = ""
-        best_len = 0
-        for alias in _uni_aliases(uni):
-            if _alias_in_blob(alias, blob) and len(norm(alias)) >= best_len:
-                best_alias = alias
-                best_len = len(norm(alias))
-        if best_alias:
-            hits.append({"uni": uni, "alias": best_alias, "alias_len": best_len})
-    # A city/acronym contained in a full school name is not a second school:
-    # "Wuppertal" inside "Kirchliche Hochschule Wuppertal", for example.
-    hits = [
-        hit for hit in hits
-        if not any(
-            other["alias_len"] > hit["alias_len"]
-            and _alias_in_blob(hit["alias"], norm(other["alias"]))
-            for other in hits
-        )
-    ]
-    _UNI_HITS_CACHE[key] = (now, hits)
-    return list(hits)
-
-
-def _full_template_name_in_blob(stem: str, cover_text: str) -> bool:
-    """True if the template's full identifying name appears on the cover.
-
-    Strips generic/title filler (Muster, TH, HS, ...) and requires every
-    remaining word to match as a whole word. E.g. "TH Köln" needs both
-    "th" AND "köln"; "Technik" inside "Automatisierungstechnik" is not enough.
-    """
-    blob = norm(cover_text)
-    filler = set(GENERIC_TEMPLATE_TOKENS) | {"th", "hs", "fh", "tu", "fh", "rwth", "hsh", "hdm"}
-    # NOTE: \w includes "_", so an underscore in a template filename would
-    # otherwise glue words together ("siegen_universität") and never match
-    # the spaced cover text. Split on everything that is not a letter/digit.
-    words = [
-        w for w in re.split(r"[^a-zäöüß0-9]+", norm(stem))
-        if w and len(w) >= 2 and w not in filler
-    ]
-    if not words:
-        return False
-    if all(
-        re.search(rf"(?:^|[^\wäöüß]){re.escape(w)}(?:$|[^\wäöüß])", blob) is not None
-        for w in words
-    ):
-        return True
-    # Glued-text fallback: PDF text layers sometimes drop all spaces
-    # ("derBergischenUniversitätWuppertal"). Then the identifying words must
-    # appear glued together, in order, as one run.
-    compact_blob = re.sub(r"[\s,.;:()\-–—/]+", "", blob)
-    compact_words = "".join(words)
-    return compact_words in compact_blob
-
-
-def filename_university_hits(text: str, templates_dir: Path | None) -> list[dict]:
-    if not templates_dir or not templates_dir.is_dir():
-        return []
-    blob = norm(text)
-    scored: list[tuple[int, Path]] = []
-    for path in templates_dir.glob("*.upf"):
-        tokens = [
-            tok for tok in re.split(r"[\s_\-–.]+", path.stem)
-            if len(tok) >= 3 and norm(tok) not in GENERIC_TEMPLATE_TOKENS
-        ]
-        if not tokens:
-            continue
-        hits = sum(1 for tok in tokens if _alias_in_blob(tok, blob))
-        if hits and hits >= max(1, (len(tokens) + 1) // 2):
-            scored.append((hits, path))
-    if not scored:
-        return []
-    top = max(s for s, _ in scored)
-    winners = [p for s, p in scored if s == top]
-    return [
-        {"uni": {"id": p.stem, "aliases": [p.stem], "template": p.name}, "alias": p.stem, "alias_len": len(p.stem)}
-        for p in winners
-    ]
-
-
-def _first_hit_on_cover(cover_text: str, hits: list[dict]) -> dict | None:
-    blob = norm(cover_text)
-    best = None
-    best_pos = None
-    for h in hits:
-        for alias in _uni_aliases(h["uni"]):
-            a = norm(alias)
-            if not a or not _alias_in_blob(alias, blob):
-                continue
-            pos = blob.find(a) if len(a) > 4 else (re.search(rf"(?:^|\s){re.escape(a)}(?:\s|$)", blob).start() if re.search(rf"(?:^|\s){re.escape(a)}(?:\s|$)", blob) else -1)
-            if pos >= 0 and (best_pos is None or pos < best_pos):
-                best_pos = pos
-                best = h
-    return best
-
-
-def _model_picks_hit(model_guess: str, hits: list[dict], cover_text: str) -> dict | None:
-    """Allow the model to choose only among universities already on the cover."""
-    if not model_guess or not hits:
-        return None
-    ng = norm(model_guess)
-    if not ng:
-        return None
-    matching: list[dict] = []
-    for h in hits:
-        names = _uni_aliases(h["uni"])
-        if any(
-            _alias_in_blob(a, ng) or _alias_in_blob(model_guess, norm(a))
-            for a in names
-        ):
-            matching.append(h)
-    ids = {h["uni"]["id"]: h for h in matching}
-    if len(ids) == 1:
-        return next(iter(ids.values()))["uni"]
-    if len(ids) > 1:
-        # Guess named several cover schools (typical Kooperation line). Letterhead = first alias on the page.
-        first = _first_hit_on_cover(cover_text, list(ids.values()))
-        return first["uni"] if first else None
-    return None
+    return "\n".join(
+        line
+        for line in text.splitlines()
+        if not _ADDRESS_LINE_RE.match(line) and not _BIRTH_LINE_RE.match(line)
+    )
 
 
 def resolve_university(
     cover_text: str,
-    model_guess: str,
+    uni_id: str,
     universities: list[dict],
     templates_dir: Path | None,
 ) -> tuple[dict | None, list[str], list[dict]]:
-    risks: list[str] = []
-    hits = cover_university_hits(cover_text, universities)
-    source = "alias"
-    if not hits:
-        hits = filename_university_hits(cover_text, templates_dir)
-        source = "filename"
-        if hits:
-            # Filename-only hits are weak evidence (a city/word in a compound
-            # name). Only trust a template whose full identifying part matches,
-            # e.g. "TH Köln" as whole words — never a lone "Technik"/"Institut".
-            strong = [
-                h for h in hits
-                if _full_template_name_in_blob(Path(h["uni"]["template"]).stem, cover_text)
-            ]
-            if strong:
-                hits = strong
-            else:
-                hits = []
-                risks.append("weak_template_filename_ignored")
+    """Validate the model's institution pick against the cover.
 
-    summary = [
-        {"id": h["uni"]["id"], "template": h["uni"].get("template", ""), "alias": h["alias"]}
-        for h in hits
-    ]
-    if not hits:
-        return None, ["no_university_on_cover"] + risks, summary
-
-    by_id = {h["uni"]["id"]: h for h in hits}
-    if len(by_id) == 1:
-        if source == "filename":
-            risks.append("university_from_template_filename")
-        return next(iter(by_id.values()))["uni"], risks, summary
-
-    picked = _model_picks_hit(model_guess, list(by_id.values()), cover_text)
-    if picked:
-        risks.append("university_disambiguated_by_model")
-        return picked, risks, summary
-
-    return None, [f"ambiguous_university:{','.join(sorted(by_id))}"], summary
-
-
-def match_university(
-    text: str,
-    universities: list[dict],
-    model_guess: str = "",
-    templates_dir: Path | None = None,
-) -> dict | None:
-    uni, _risks, _hits = resolve_university(text, model_guess, universities, templates_dir)
-    return uni
+    The model is the identifier: it chooses a school's config id. This only
+    checks that choice against the PDF - a known school is accepted only if at
+    least one distinctive token from its template filename appears on the cover
+    (address/birth lines stripped). A pick with no such trace is rejected
+    rather than stamped, so a misread never becomes a wrong foil.
+    """
+    uni_id = (uni_id or "").strip()
+    if not uni_id:
+        return None, ["no_university_on_cover"], []
+    uni_obj = next((u for u in universities if u.get("id") == uni_id), None)
+    if uni_obj is None:
+        return None, [f"university_id_not_in_catalog:{uni_id}"], []
+    names = [n for n in (uni_obj.get("templates") or ([uni_obj.get("template")] if uni_obj.get("template") else [])) if n]
+    if not names:
+        return uni_obj, ["no_template_for_university"], [{"id": uni_id}]
+    blob = norm(cover_matching_blob(cover_text))
+    grounded: list[str] = []
+    for name in names:
+        for tok in distinctive_filename_tokens(name):
+            if tok not in grounded and _alias_in_blob(tok, blob):
+                grounded.append(tok)
+    if not grounded:
+        return uni_obj, ["university_not_on_cover"], [{"id": uni_id}]
+    return uni_obj, [], [{"id": uni_id, "template": uni_obj.get("template", ""), "grounded_on": grounded}]
 
 
 def distinctive_filename_tokens(name: str) -> list[str]:
@@ -884,208 +704,6 @@ def distinctive_filename_tokens(name: str) -> list[str]:
         if len(n) >= 4 or (len(n) >= 2 and tok.isupper()):
             tokens.append(tok)
     return tokens
-
-
-# Brief caches for data that is expensive to (re)scan on the AFP share or in
-# config: the plain-template catalog and per-cover university alias hits.
-_TPL_CACHE: dict[str, tuple[float, int, tuple[Path, ...]]] = {}
-_UNI_HITS_CACHE: dict[tuple[str, int], tuple[float, list[dict]]] = {}
-_CACHE_TTL = 30.0
-
-
-def list_plain_templates(templates_dir: Path | None) -> list[Path]:
-    if not templates_dir or not templates_dir.is_dir():
-        return []
-    # The glob + per-file is_file() costs ~0.5s over the AFP share, and the
-    # result is needed 2-3x per PDF. Cache briefly; downstream code still
-    # re-checks path.is_file() before using an entry.
-    key = str(templates_dir)
-    now = time.monotonic()
-    directory_mtime = templates_dir.stat().st_mtime_ns
-    cached = _TPL_CACHE.get(key)
-    if cached is not None and cached[1] == directory_mtime and now - cached[0] < _CACHE_TTL:
-        return list(cached[2])
-    result = sorted(
-        p for p in templates_dir.glob("*.upf") if p.is_file() and not is_title_template(p.name)
-    )
-    _TPL_CACHE[key] = (now, directory_mtime, tuple(result))
-    return list(result)
-
-
-def grounded_templates(
-    cover_text: str,
-    templates_dir: Path | None,
-    universities: list[dict] | None = None,
-) -> list[Path]:
-    """Plain .upf files whose names (or config aliases) are actually on the cover."""
-    catalog = list_plain_templates(templates_dir)
-    if not catalog:
-        return []
-    # A known institution's explicit membership takes precedence over city
-    # tokens. In particular, an institution with deleted templates must not
-    # inherit another school's logo just because both are in the same city.
-    hits = cover_university_hits(cover_text, universities or [])
-    if hits and templates_dir:
-        matched = {
-            p for hit in hits
-            for p in template_variants_for(hit["uni"], None, templates_dir)
-        }
-        return sorted(matched)
-    chosen: list[Path] = []
-    seen: set[str] = set()
-
-    def add(path: Path) -> None:
-        key = str(path.resolve())
-        if key not in seen and path.is_file():
-            seen.add(key)
-            chosen.append(path)
-
-    for path in catalog:
-        if not distinctive_filename_tokens(path.name):
-            continue
-        if _full_template_name_in_blob(path.stem, cover_text):
-            add(path)
-
-    return chosen
-
-
-def _match_template_guess(guess: str, shortlist: list[Path]) -> Path | None:
-    if not guess or not shortlist:
-        return None
-    g = norm(Path(str(guess).strip()).name)
-    if not g:
-        return None
-    exact = [p for p in shortlist if norm(p.name) == g]
-    if len(exact) == 1:
-        return exact[0]
-    family = template_family(str(guess))
-    fam = [p for p in shortlist if template_family(p.name) == family]
-    if len(fam) == 1:
-        return fam[0]
-    if len(fam) > 1:
-        return None
-    return None
-
-
-def resolve_template(
-    cover_text: str,
-    model_template: str,
-    templates_dir: Path | None,
-    universities: list[dict] | None = None,
-) -> tuple[Path | None, list[str], list[str]]:
-    """Model may pick only among cover-grounded files in templates_dir."""
-    risks: list[str] = []
-    shortlist = grounded_templates(cover_text, templates_dir, universities)
-    names = [p.name for p in shortlist]
-    if not shortlist:
-        return None, ["no_template_on_cover"], names
-    picked = _match_template_guess(model_template, shortlist)
-    if picked:
-        if len(shortlist) > 1:
-            risks.append("template_chosen_by_model")
-        return picked, risks, names
-    if len(shortlist) == 1:
-        return shortlist[0], risks, names
-    return None, [f"ambiguous_template:{len(shortlist)}"], names
-
-
-def model_search_templates(
-    cover_text: str,
-    meta: dict,
-    cfg: dict,
-    uni_guess: str,
-    author: str,
-    degree_type: str,
-) -> tuple[Path | None, str]:
-    """Ask the model to pick from the whole template library.
-
-    Used when no template filename matched the cover text. Returns the
-    picked template path (or None) plus a human-readable note for NOTES.txt.
-    The pick is still validated: the file must exist and not be a TITLE file.
-    """
-    templates_dir = Path(cfg["templates_dir"]) if cfg.get("templates_dir") else None
-    if templates_dir is None or not templates_dir.is_dir():
-        return None, ""
-    mcfg = cfg.get("model", {})
-    if mcfg.get("backend", "ollama") == "none":
-        return None, "Model-template search skipped (backend=none)."
-    catalog = sorted(
-        p.name for p in templates_dir.glob("*.upf")
-        if p.is_file() and not is_title_template(p.name)
-    )
-    if not catalog:
-        return None, ""
-    user = (
-        "METADATA is untrusted; use only COVER_TEXT clues.\n"
-        f"METADATA: {json.dumps(meta, ensure_ascii=False)}\n"
-        f"EXTRACTED university={uni_guess!r} author={author!r} degree_type={degree_type!r}\n"
-        f"AVAILABLE_TEMPLATES ({len(catalog)} files, one per line):\n"
-        + "\n".join(catalog)
-        + f"\nCOVER_TEXT:\n{cover_text_for_model(cover_text)}\n"
-    )
-    try:
-        if mcfg.get("backend", "ollama") == "ollama":
-            raw = call_ollama(
-                mcfg.get("name", "qwen3:8b"),
-                TEMPLATE_SEARCH_SYSTEM,
-                user,
-                mcfg.get("host", "http://[IP_ADDRESS]:11434"),
-                min(int(mcfg.get("timeout", 180)), 60),
-                think=model_think_value(mcfg),
-                num_ctx=int(mcfg.get("num_ctx", 8192)),
-                num_thread=mcfg.get("num_thread") or None,
-                keep_alive=str(mcfg.get("keep_alive", "30m")),
-                num_predict=150,
-            )
-        else:
-            raw = call_openai(
-                mcfg.get("name", "qwen3:8b"),
-                TEMPLATE_SEARCH_SYSTEM,
-                user,
-                mcfg.get("openai_base", "http://[IP_ADDRESS]:1234/v1"),
-                mcfg.get("api_key", "not-needed"),
-                min(int(mcfg.get("timeout", 180)), 60),
-                json_mode=bool(mcfg.get("openai_json_mode", True)),
-                think=model_think_value(mcfg),
-            )
-    except Exception as exc:
-        return None, f"Model-template search failed ({exc})."
-    data = parse_json_object(raw)
-    guess = str(data.get("template") or "").strip()
-    uni = str(data.get("university") or "").strip()
-    reason = str(data.get("reason") or "").strip()
-    if not guess:
-        return None, (
-            "Model-template search: the model found no plausible template "
-            f"in the library{(f' ({reason})' if reason else '')}."
-        )
-    candidate = templates_dir / Path(guess).name
-    if not candidate.is_file():
-        return None, (
-            f"Model-template search: model suggested {guess!r}, "
-            "but that file does not exist — ignored."
-        )
-    if is_title_template(candidate.name):
-        return None, (
-            f"Model-template search: model suggested {guess!r}, "
-            "but that is a TITEL/TITLE variant — ignored."
-        )
-    note = (
-        f"Model-template search: no template name matched the cover text, "
-        f"so the model searched the full library ({len(catalog)} files) and picked "
-        f"{candidate.name!r}"
-        + (f" for university {uni!r}" if uni else "")
-        + (f" — {reason}" if reason else "")
-        + "."
-    )
-    return candidate, note
-
-
-def hardcoded_template_path(uni: dict | None, templates_dir: Path | None) -> Path | None:
-    if not uni or not templates_dir:
-        return None
-    variants = template_variants_for(uni, None, templates_dir)
-    return variants[0] if variants else None
 
 
 def looks_like_supervisor(name: str) -> bool:
@@ -1205,15 +823,14 @@ def resolve_year(
 
 SYSTEM = """You extract thesis cover fields from COVER_TEXT.
 Reply with ONLY a JSON object, no markdown:
-{"university":"","author":"","title":"","degree_phrase":"","degree_type":"bachelor|master|dissertation|unknown","year":"","template":""}
+{"university":"","author":"","title":"","degree_phrase":"","degree_type":"bachelor|master|dissertation|unknown","year":""}
 Rules:
 - author, title, university, year, degree_phrase MUST be copied character-for-character from COVER_TEXT. Never from METADATA.
+- "university" is the id of the awarding institution, chosen from the UNIVERSITIES list in the message (the letterhead / body that issued the thesis). Output exactly that id - do NOT copy a written name. If several bodies appear, use the one that awarded the work. If none is clearly identifiable, use "".
 - The author is the candidate who submitted the work. Do not use Erstgutachter, Zweitgutachter, Betreuer, or supervisor names.
 - The author line may stand alone with no "vorgelegt von" / "written by". Still copy that name exactly.
-- If several universities appear, pick the awarding institution (letterhead), still copied verbatim.
 - If several years appear, YOU decide which is the publishing/submission year (not a start date, copyright, or cited work). Copy that year exactly.
 - degree_phrase MUST be copied character-for-character from COVER_TEXT AND be exactly one of these options: __DEGREE_OPTIONS__. If the cover shows a degree-programme name instead (e.g. "Bachelor of Arts", "Master of Science"), set degree_phrase to "" and pick degree_type. Do not rewrite it.
-- If AVAILABLE_TEMPLATES is present, template MUST be copied exactly from that list (one filename). Pick the foil for the awarding university. Prefer the general university cover, not a Gymnasium, IHK, church, or partner school unless that body is clearly the issuer. Never pick a TITEL/TITLE file. If AVAILABLE_TEMPLATES is omitted, set template to "".
 - Do not fix spelling. Do not translate. Do not invent.
 - year must be a 4-digit year that appears in COVER_TEXT.
 - degree_type is only bachelor, master, dissertation, or unknown.
@@ -1222,17 +839,6 @@ Rules:
 
 # Keep the model's menu in sync with DEGREE_ALLOWED automatically.
 SYSTEM = SYSTEM.replace("__DEGREE_OPTIONS__", _DEGREE_OPTIONS)
-
-TEMPLATE_SEARCH_SYSTEM = """You pick a foil-stamping cover template for a thesis.
-Reply with ONLY a JSON object, no markdown:
-{"template":"","university":"","reason":""}
-Rules:
-- template MUST be copied exactly (one filename) from AVAILABLE_TEMPLATES. Never invent a filename. Never pick a TITEL/TITLE file (they are not in the list).
-- Use COVER_TEXT clues: university name, faculty, institute, city, logo text, department. Pick the template whose filename best matches the awarding institution.
-- university is the awarding institution name copied character-for-character from COVER_TEXT if present, else "".
-- reason is one short sentence saying which cover clue led to the pick.
-- If nothing in the list plausibly matches, set template to "".
-"""
 
 
 def model_think_value(mcfg: dict) -> bool | str:
@@ -1511,65 +1117,92 @@ def title_cover_span(value: str, haystack: str) -> str:
     return re.sub(r"\s+", " ", matches[0].group()).strip()
 
 
-def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
-    years = years_in(cover_text)
-    labelled_authors = author_hints(cover_text)
-    degree = guess_degree(cover_text)
-    candidates = {"authors": labelled_authors, "years": years, "degree_guess": degree}
+def _university_catalog(universities: list[dict]) -> str:
+    """One 'id: label' line per configurable school, for the model prompt.
 
-    templates_dir = Path(cfg["templates_dir"]) if cfg.get("templates_dir") else None
-    universities = cfg.get("universities", [])
-    hardcoded_hits = [
-        h for h in cover_university_hits(cover_text, universities)
-        if hardcoded_template_path(h["uni"], templates_dir)
-    ]
-    need_model_template = not hardcoded_hits
-    available_names = (
-        [p.name for p in grounded_templates(cover_text, templates_dir, universities)]
-        if need_model_template
-        else []
-    )
+    The label is the school's (primary) foil filename as a human-readable
+    name - the very string that ends up stamped - so the model can recognise
+    the institution from the cover without any hand-maintained alias list.
+    Schools with no configured foil are omitted: the model is never offered
+    an institution we cannot stamp.
+    """
+    lines: list[str] = []
+    for u in universities:
+        uid = u.get("id")
+        if not uid:
+            continue
+        names = [n for n in (u.get("templates") or ([u.get("template")] if u.get("template") else [])) if n]
+        if not names:
+            continue
+        label = re.sub(r"[_-]+", " ", Path(names[0]).stem)
+        label = re.sub(r"^\d+-", "", label).strip()
+        lines.append(f"{uid}: {label}")
+    return "\n".join(lines)
+
+
+def _model_fields(cover_text: str, meta: dict, cfg: dict, universities: list[dict], candidates: dict) -> dict:
+    """Single model call: extract the text fields AND the institution id.
+
+    The model is the only component that identifies the university. On any
+    failure (backend disabled, API error) it returns {} and the caller must
+    treat the institution as unidentified - never guessed.
+    """
+    mcfg = cfg.get("model", {})
+    backend = mcfg.get("backend", "ollama")
+    if backend == "none":
+        LOG.warning("Model backend is 'none' - no university can be identified")
+        return {}
     user = (
         "METADATA is untrusted; copy only from COVER_TEXT.\n"
         f"METADATA: {json.dumps(meta, ensure_ascii=False)}\n"
         f"CANDIDATES: {json.dumps(candidates, ensure_ascii=False)}\n"
+        f"UNIVERSITIES (choose exactly one id - the awarding institution - or \"\"):\n{_university_catalog(universities)}\n"
+        f"COVER_TEXT:\n{cover_text_for_model(cover_text)}\n"
     )
-    if need_model_template:
-        user += f"AVAILABLE_TEMPLATES: {json.dumps(available_names, ensure_ascii=False)}\n"
-    user += f"COVER_TEXT:\n{cover_text_for_model(cover_text)}\n"
+    try:
+        if backend == "ollama":
+            raw = call_ollama(
+                mcfg.get("name", "qwen3:8b"),
+                SYSTEM,
+                user,
+                mcfg.get("host", "http://[IP_ADDRESS]:11434"),
+                int(mcfg.get("timeout", 180)),
+                think=model_think_value(mcfg),
+                num_ctx=int(mcfg.get("num_ctx", 8192)),
+                num_thread=mcfg.get("num_thread") or None,
+                keep_alive=str(mcfg.get("keep_alive", "30m")),
+            )
+        else:
+            raw = call_openai(
+                mcfg.get("name", "qwen3:8b"),
+                SYSTEM,
+                user,
+                mcfg.get("openai_base", "http://[IP_ADDRESS]:1234/v1"),
+                mcfg.get("api_key", "not-needed"),
+                int(mcfg.get("timeout", 180)),
+                json_mode=bool(mcfg.get("openai_json_mode", True)),
+                think=model_think_value(mcfg),
+            )
+        return parse_json_object(raw)
+    except Exception as exc:
+        LOG.warning("Model call failed (%s) - university cannot be identified", exc)
+        return {}
 
-    model_fields: dict = {}
-    mcfg = cfg.get("model", {})
-    backend = mcfg.get("backend", "ollama")
-    if backend != "none":
-        try:
-            if backend == "ollama":
-                raw = call_ollama(
-                    mcfg.get("name", "qwen3:8b"),
-                    SYSTEM,
-                    user,
-                    mcfg.get("host", "http://[IP_ADDRESS]:11434"),
-                    int(mcfg.get("timeout", 180)),
-                    think=model_think_value(mcfg),
-                    num_ctx=int(mcfg.get("num_ctx", 8192)),
-                    num_thread=mcfg.get("num_thread") or None,
-                    keep_alive=str(mcfg.get("keep_alive", "30m")),
-                )
-            else:
-                raw = call_openai(
-                    mcfg.get("name", "qwen3:8b"),
-                    SYSTEM,
-                    user,
-                    mcfg.get("openai_base", "http://127.0.0.1:1234/v1"),
-                    mcfg.get("api_key", "not-needed"),
-                    int(mcfg.get("timeout", 180)),
-                    json_mode=bool(mcfg.get("openai_json_mode", True)),
-                    think=model_think_value(mcfg),
-                )
-            model_fields = parse_json_object(raw)
-            LOG.info("Model raw fields: %s", model_fields)
-        except Exception as exc:
-            LOG.warning("Model call failed (%s) — using heuristics only", exc)
+
+def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
+    # A birth year ("Geboren ... 1991") is not a publishing year, so year
+    # candidates are drawn from the cover minus address/birthplace lines.
+    years = years_in(cover_matching_blob(cover_text))
+    labelled_authors = author_hints(cover_text)
+    degree = guess_degree(cover_text)
+    candidates = {"authors": labelled_authors, "years": years, "degree_guess": degree}
+
+    universities = cfg.get("universities", [])
+    templates_dir = Path(cfg["templates_dir"]) if cfg.get("templates_dir") else None
+
+    # The model is the identifier: one call extracts the text fields and the
+    # awarding institution's config id. No alias or filename matching is used.
+    model_fields = _model_fields(cover_text, meta, cfg, universities, candidates)
 
     hay = cover_text
     risks: list[str] = []
@@ -1606,59 +1239,32 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
     ):
         model_phrase = ""
 
-    uni_guess = str(model_fields.get("university") or "").strip()
-    uni, ur, uni_hits = resolve_university(
-        cover_text, uni_guess, universities, templates_dir
-    )
+    # The model names the institution by id; the cover only grounds (or vetoes)
+    # that pick. Which foil to stamp is decided purely from config below.
+    uni_id = str(model_fields.get("university") or "").strip()
+    uni, ur, uni_matches = resolve_university(cover_text, uni_id, universities, templates_dir)
     risks.extend(ur)
 
-    tpl_guess = str(model_fields.get("template") or "").strip()
-    tpl_names = available_names
-    template_learned = False
     notes: list[str] = []
     if "title_not_on_cover" in risks:
         notes.append("Title omitted: the model's title could not be matched to the PDF cover.")
-    hard = hardcoded_template_path(uni, templates_dir)
-    if uni is not None and hard is None:
-        # A recognized school with no surviving configured file is a known
-        # missing template, not an invitation to search other schools' logos.
-        template_name = ""
-        risks.append("no_template_for_university")
-        notes.append(f"No configured template is available for {uni['id']}.")
-    elif hard is not None:
-        template_name = hard.name
-        uni = {**uni, "template": template_name}
-    else:
-        tpl_path, tr, tpl_names = resolve_template(
-            cover_text, tpl_guess, templates_dir, universities
+    if "university_not_on_cover" in risks:
+        notes.append(
+            f"The model identified '{uni_id}', but no part of that school's foil "
+            "filename appears on the cover - not stamped. Check the cover, or fix "
+            f"the '{uni_id}' entry's template in config.json."
         )
-        risks.extend(tr)
-        if tpl_path is None and "no_template_on_cover" in tr:
-            # No filename on the cover matched: ask the model to search the
-            # whole template library (fuzzy: city, faculty, abbreviations).
-            tpl_path, mr = model_search_templates(
-                cover_text, meta, cfg, uni_guess, author,
-                str(model_fields.get("degree_type") or ""),
-            )
-            if mr:
-                notes.append(mr)
-                if tpl_path is not None:
-                    risks.append("template_found_by_model_search")
-        if tpl_path is not None:
-            template_name = tpl_path.name
-            template_learned = True
-            risks.append("template_learned")
-            if uni is None:
-                toks = distinctive_filename_tokens(tpl_path.name)
-                uni = {
-                    "id": safe_stem(toks[0] if toks else tpl_path.stem),
-                    "aliases": toks,
-                    "template": template_name,
-                }
-            else:
-                uni = {**uni, "template": template_name}
-        else:
-            template_name = ""
+    unknown_id = next((r for r in risks if r.startswith("university_id_not_in_catalog")), None)
+    if unknown_id:
+        notes.append(
+            f"The model returned institution id '{unknown_id.split(':', 1)[1]}', "
+            "which is not in config.json - add it there, then reprocess."
+        )
+    if "no_university_on_cover" in risks:
+        notes.append(
+            "The model did not identify an awarding institution (or the model/API "
+            "was unavailable). Add the school to config.json and reprocess."
+        )
 
     labels = cfg.get("degree_labels", {})
     # The cover is ground truth. The model can latch onto a stray mention
@@ -1677,34 +1283,27 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
         degree_text = labels.get(dt, labels.get("unknown", "Thesis"))
         risks.append("degree_inferred_not_on_cover")
 
+    # A university that is unknown, ungrounded, or foiless is never stamped:
+    # _process_pdf_inner raises on these before any foil is written.
     blocking = any(
         r == "multiple_years_unresolved"
         or r == "author_looks_like_supervisor"
-        or r.startswith("ambiguous_template:")
-        or r == "no_template_on_cover"
+        or r == "no_university_on_cover"
+        or r == "university_not_on_cover"
+        or r.startswith("university_id_not_in_catalog")
         or r == "no_template_for_university"
-        or (r == "no_university_on_cover" and not template_name)
-        or (r.startswith("ambiguous_university:") and not template_name)
         for r in risks
     )
-    needs_review = any(
-        r in {
-            "university_disambiguated_by_model",
-            "university_from_template_filename",
-            "author_looks_like_supervisor",
-        }
-        for r in risks
-    )
-    ok_to_stamp = (not blocking) and (not needs_review) and bool(uni) and bool(author) and bool(year)
+    ok_to_stamp = (not blocking) and bool(uni) and bool(author) and bool(year)
 
     return {
         "university_id": uni["id"] if uni else "",
-        "university_template": template_name,
-        "university_raw": uni_guess,
-        "university_matches": uni_hits,
-        "template_candidates": tpl_names,
-        "template_model": tpl_guess,
-        "template_learned": template_learned,
+        "university_template": "",
+        "university_raw": uni_id,
+        "university_matches": uni_matches,
+        "template_candidates": [],
+        "template_model": "",
+        "template_learned": False,
         "author": author,
         "title": title,
         "degree_type": dt,
@@ -2417,16 +2016,23 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
     if fields.get("risks"):
         LOG.warning("Risks: %s  ok_to_stamp=%s", fields["risks"], fields.get("ok_to_stamp"))
 
-    amb = [r for r in fields.get("risks", []) if r.startswith("ambiguous_university:")]
-    if amb:
+    unknown_id = next(
+        (r for r in fields.get("risks", []) if r.startswith("university_id_not_in_catalog:")), None
+    )
+    if unknown_id:
         raise RuntimeError(
-            f"Cover names more than one configured university ({amb[0]}). "
-            "Model did not uniquely pick one of those cover matches. Refusing to stamp."
+            f"Model returned university id '{unknown_id.split(':', 1)[1]}', which is not in config.json. "
+            "Add that institution (id + template) to config.json, then reprocess. Refusing to stamp."
+        )
+    if "university_not_on_cover" in fields.get("risks", []):
+        raise RuntimeError(
+            f"Model identified '{fields['university_raw']}' but no part of that school's foil "
+            "filename appears on the cover. Refusing to stamp a guessed foil - review the PDF."
         )
     if "no_university_on_cover" in fields.get("risks", []):
         raise RuntimeError(
-            f"No university alias on pages 1–2. Model said {fields['university_raw']!r} "
-            "(ignored because it is not on the cover). Add aliases or put the school name on the PDF."
+            f"No awarding institution identified (model returned {fields['university_raw']!r}; "
+            "the model/API may be unavailable). Add the school to config.json and reprocess. Refusing to stamp."
         )
     if "author_looks_like_supervisor" in fields.get("risks", []):
         raise RuntimeError(
@@ -2533,22 +2139,6 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
 
     if not written:
         raise RuntimeError("Could not write any UPF: " + "; ".join(variant_errors))
-
-    tpl_name = fields.get("university_template") or ""
-    uni_id = fields.get("university_id") or ""
-    already = any(
-        u.get("id") == uni_id and u.get("template") == tpl_name
-        for u in cfg.get("universities", [])
-    )
-    if tpl_name and not already:
-        extra = distinctive_filename_tokens(tpl_name)
-        raw_uni = str(fields.get("university_raw") or "").strip()
-        if raw_uni:
-            extra.append(raw_uni)
-        persist_learned_template(cfg, uni_id or safe_stem(tpl_name), tpl_name, extra)
-        fields["template_learned"] = True
-        if "template_learned" not in fields.get("risks", []):
-            fields.setdefault("risks", []).append("template_learned")
 
     retry_io(
         lambda: sidecar.write_text(
