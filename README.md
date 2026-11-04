@@ -76,11 +76,15 @@ python thesis_cover_watch.py --config config.json --scan-existing
 
 ## Model backend
 
-The `model` block selects the backend with `"backend"`:
+The `model` block selects the backend with `"backend"`. The default is the
+local `"ollama"` backend; no API key is involved.
 
-- `"ollama"` — a local model. Set `name` (e.g. `qwen3:8b`) and `host`
-  (e.g. `http://192.168.x.x:11434`); optionally `num_ctx`, `num_thread`,
-  `keep_alive`. Ollama must already be running.
+- `"ollama"` (default) — a local model on the LAN. Set `name`
+  (e.g. `ornith-1.5:9b`) and `host` (e.g. `http://ollama-box:11434`);
+  optionally `num_ctx`, `keep_alive` (e.g. `"24h"` keeps the model resident
+  so each PDF is fast). Ollama must already be running on that host. Point
+  `host` at a name (not a bare IP) resolved via an `/etc/hosts` entry, so a
+  DHCP lease change is a one-line fix: `ollama-box <ip>` in `/etc/hosts`.
 - `"openai"` — any OpenAI-compatible HTTP endpoint (a hosted gateway or a
   local server). Set `name` (the model id), `openai_base`
   (e.g. `https://api.example.com/v1`) and `api_key`. `think: false` turns the
