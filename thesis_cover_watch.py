@@ -642,6 +642,17 @@ _ADDRESS_LINE_RE = re.compile(
 _BIRTH_LINE_RE = re.compile(
     r"(?i)^\s*(?:geboren\b|geb\.\b|geburtsort\b|born\b|date\s+of\s+birth)"
 )
+# Unlabeled address blocks: a bare "Musterstr. 12" line directly above a
+# "42103 Wuppertal" line. A line opening with five digits is a postal code,
+# never a year or a page number, so its city is address noise, not
+# institution evidence - even when no "Postanschrift:" label introduces it.
+_PLZ_LINE_RE = re.compile(r"^\s*\d{5}\s+\S")
+# The street line of such a block: the first word ends in a street suffix and
+# a house number follows. Only the line directly above a postal-code line is
+# ever dropped on this basis.
+_STREET_LINE_RE = re.compile(
+    r"(?i)^\s*\S*(?:stra[ßs]e|str\.?|weg|platz|gasse|allee|ring|hof|damm|wall)\s*\.?\s+\d"
+)
 
 
 def cover_matching_blob(text: str) -> str:
@@ -651,11 +662,18 @@ def cover_matching_blob(text: str) -> str:
     lines that name a residence or birthplace are removed, since they mention
     a city (or a year) that is not the awarding school.
     """
-    return "\n".join(
-        line
-        for line in text.splitlines()
-        if not _ADDRESS_LINE_RE.match(line) and not _BIRTH_LINE_RE.match(line)
-    )
+    lines = text.splitlines()
+    drop = [
+        bool(_ADDRESS_LINE_RE.match(line) or _BIRTH_LINE_RE.match(line))
+        for line in lines
+    ]
+    for i, line in enumerate(lines):
+        if drop[i] or not _PLZ_LINE_RE.match(line):
+            continue
+        drop[i] = True
+        if i > 0 and not drop[i - 1] and _STREET_LINE_RE.match(lines[i - 1]):
+            drop[i - 1] = True
+    return "\n".join(line for line, removed in zip(lines, drop) if not removed)
 
 
 def resolve_university(
