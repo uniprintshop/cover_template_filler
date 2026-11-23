@@ -686,9 +686,10 @@ def resolve_university(
 
     The model is the identifier: it chooses a school's config id. This only
     checks that choice against the PDF - a known school is accepted only if at
-    least one distinctive token from its template filename appears on the cover
-    (address/birth lines stripped). A pick with no such trace is rejected
-    rather than stamped, so a misread never becomes a wrong foil.
+    least one of its distinctive tokens (template filename or configured
+    alias) appears on the cover (address/birth lines stripped). A pick with no
+    such trace is rejected rather than stamped, so a misread never becomes a
+    wrong foil.
     """
     uni_id = (uni_id or "").strip()
     if not uni_id:
@@ -701,10 +702,21 @@ def resolve_university(
         return uni_obj, ["no_template_for_university"], [{"id": uni_id}]
     blob = norm(cover_matching_blob(cover_text))
     grounded: list[str] = []
+    seen: set[str] = set()
+    # Evidence may come from the foil's filename or from the school's
+    # configured aliases: letterheads often print the institution's formal
+    # name ("... Nordrhein-Westfalen") while the foil is named after its
+    # abbreviation ("HSPV_NRW"). Dedupe case-insensitively so "hspv" (alias)
+    # and "HSPV" (filename) report once.
+    candidates = [a for a in (uni_obj.get("aliases") or []) if a]
     for name in names:
-        for tok in distinctive_filename_tokens(name):
-            if tok not in grounded and _alias_in_blob(tok, blob):
-                grounded.append(tok)
+        candidates.extend(distinctive_filename_tokens(name))
+    for cand in candidates:
+        if norm(cand) in seen:
+            continue
+        if _alias_in_blob(cand, blob):
+            seen.add(norm(cand))
+            grounded.append(cand)
     if not grounded:
         return uni_obj, ["university_not_on_cover"], [{"id": uni_id}]
     return uni_obj, [], [{"id": uni_id, "template": uni_obj.get("template", ""), "grounded_on": grounded}]

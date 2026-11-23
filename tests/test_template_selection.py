@@ -149,6 +149,51 @@ class TemplateSelectionTests(unittest.TestCase):
         self.assertEqual(fields["university_id"], "wuppertal")
         self.assertTrue(fields["ok_to_stamp"])
 
+    def test_formal_name_spelled_long_grounds_the_pick(self):
+        # The letterhead spells the state out ("Nordrhein-Westfalen") while the
+        # foil is named after the abbreviation (HSPV_NRW). The filename tokens
+        # (hspv/nrw) only occur inside the student's e-mail address, where the
+        # short-token matcher does not look - so the school's configured alias
+        # for the long spelling must ground the pick (Sendzik 2026 case).
+        cover = (
+            "Hochschule für Polizei und öffentliche Verwaltung Nordrhein-Westfalen\n"
+            "Abteilung Gelsenkirchen\n"
+            "Studienort Hagen\n"
+            "Modul 11.1 – Bachelor-Thesis\n"
+            "Desk-Sharing-Modelle in der kommunalen Verwaltung – Potenziale und\n"
+            "Grenzen\n"
+            "SoSe 2026\n"
+            "Vorgelegt von:\n"
+            "Name, Vorname: Sendzik, Lars Malte\n"
+            "Anschrift: Zur Scheuren 5\n"
+            "42275 Wuppertal\n"
+            "E-Mail-Adresse: larsmalte.sendzik@studium.hspv.nrw.de\n"
+        )
+        fields = self._fields_with_model(
+            cover,
+            {
+                "university": "hspv-nrw",
+                "author": "Sendzik, Lars Malte",
+                "title": (
+                    "Desk-Sharing-Modelle in der kommunalen Verwaltung – "
+                    "Potenziale und Grenzen"
+                ),
+                "degree_phrase": "Bachelor-Thesis",
+                "degree_type": "bachelor",
+                "year": "2026",
+            },
+        )
+        self.assertEqual(fields["university_id"], "hspv-nrw")
+        self.assertNotIn("university_not_on_cover", fields["risks"])
+        self.assertTrue(fields["ok_to_stamp"])
+        # The long formal alias must be among the grounding evidence, not just
+        # the e-mail-fragment alias.
+        grounded_on = fields["university_matches"][0].get("grounded_on", [])
+        self.assertIn(
+            "hochschule für polizei und öffentliche verwaltung nordrhein-westfalen",
+            grounded_on,
+        )
+
     def test_blob_drops_unlabeled_address_block(self):
         text = (
             "Bergische Universität Wuppertal\n"
