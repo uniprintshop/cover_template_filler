@@ -1,5 +1,7 @@
+-c constraints.txt
 pdfplumber
 pypdf
 pdf2image
 pytesseract
 watchdog
+Pillow

@@ -2,27 +2,36 @@
 
 When a PDF is dropped into `watch_dir`, the script:
 
-1. Reads pages 1–2 (OCR if there is almost no selectable text)
-2. Asks your local model for university / author / title / degree / year
-3. **Rejects** any author, title or year that cannot be grounded in the cover text (so the model cannot “correct” spelling). Titles may differ in sentence punctuation at PDF line breaks; the PDF's wording is written to the foil.
-4. Picks the `.upf` template from `universities` aliases
-5. Fills 2 or 3 text fields in the UPF
-6. Writes **two** `.upf` files when possible: the regular cover, and a `TITEL`/`TITLE` sibling template for the same school (title goes in the extra field)
-7. Writes a `.json` sidecar to `output_dir`
-8. On failure, writes a `*_FAIL.txt` (extracted facts + a short model report) into `failed_dir` instead of failing silently
-9. Moves the PDF to `processed_dir` or `failed_dir`
+1. Copies the PDF to a stable local snapshot and reads pages 1–2
+2. Extracts embedded images, downscales large ones, deduplicates them, and OCRs their text within a time budget
+3. Asks your local model for university / author / title / degree / year
+4. Validates the chosen institution against the cover and grounds author/title/year in extracted text
+5. Fills each explicitly approved `.upf` template; title siblings are optional
+6. Publishes complete UPFs and a `.json` sidecar using temporary files and renames
+7. Records completion locally, then moves the source PDF to `processed_dir`
+8. On a permanent failure, writes a deterministic `*_FAIL.txt` and moves the PDF to `failed_dir`; transient model/storage failures remain queued for retry
+
+Full-page OCR is used when digital text is too short, or as a second read when
+the institution remains unresolved. A backend outage never triggers OCR rescue
+or another inference just to explain the failure.
 
 ## Setup (CachyOS)
+
+Tested on Linux with Python 3.12. The local job lock uses POSIX `flock`.
 
 ```bash
 sudo pacman -S tesseract tesseract-data-deu tesseract-data-eng poppler
 cd ~/thesis-cover
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 Edit `config.json`:
+
+Copy `config.example.json` to `config.json` first. Relative paths are resolved
+against the configuration file's directory. `watch_dir` and `templates_dir`
+must exist; startup only creates output/archive directories.
 
 - `watch_dir`, `output_dir`, `templates_dir`, `processed_dir`, `failed_dir`
 - `notify` — desktop popups (via `notify-send`) when a cover starts, is
@@ -42,7 +51,7 @@ separate entries even though the historical filenames both start with `TH_Köln`
 After renaming or deleting a file, update these references in `config.json`
 and restart the watcher to load the new configuration. If the primary file
 disappears, another existing approved variant is used. If none remain, the
-job fails with `no_template_for_university`; it does not search for a different
+job fails if no configured template file remains; it does not search for a different
 school's logo. An entry with `"template": "", "templates": []` records an
 institution whose templates have been removed.
 
@@ -90,7 +99,8 @@ local `"ollama"` backend; no API key is involved.
   (e.g. `https://api.example.com/v1`) and `api_key`. `think: false` turns the
   model's reasoning trace off so the token budget goes to the JSON answer.
   `openai_json_mode` (default `true`) sends a JSON `response_format`.
-- `"none"` — skip the model and use the built-in regex heuristics only.
+- `"none"` — disable inference. No university is guessed from regexes alone;
+  a queued job waits until a model is configured and the watcher restarted.
 
 ## Field rules
 
@@ -99,22 +109,30 @@ local `"ollama"` backend; no API key is involved.
 | 2 | degree text; author + year. Title ignored |
 | 3 | degree; title (middle); author + year |
 
-Degree text comes from `degree_labels` in config (`Bachelor-Thesis` / `Master-Thesis` / `Dissertation`), not from free-typed model output.
+Degree text prefers a whitelisted thesis-kind phrase printed on the cover.
+Otherwise `degree_labels` supplies the wording for the resolved degree type.
 
 ## University matching
 
-Templates are chosen only from aliases that **already appear on pages 1–2**. The model cannot invent a school that is not on the PDF.
-
-- One matching school → that template.
-- Several matching schools → the model may pick **only among those**. If it cannot, the job fails (no UPF).
-- None → fail. Add aliases, or put the institution name on the cover.
+The model chooses an institution ID from the configured catalog. Python then
+requires configured alias or distinctive filename evidence on pages 1–2;
+an unsupported or ungrounded choice is rejected. Only that institution's
+explicit `template`/`templates` assignments are used. The matcher validates the
+model's choice; it never chooses a different school on its own.
 
 Multi-word aliases match consecutive phrases, allowing spaces, slashes and
 hyphens (e.g. `Universität Witten/Herdecke`). Words scattered across different
-parts of the cover do not form a university name. Explicit postal-address
-lines are excluded from university matching.
+parts of the cover do not form a university name. Postal-address and birth
+lines are excluded. OCR blocks allow clustered, reordered words within a
+bounded window; digital text stays strict. Evidence is checked per block/page,
+so two pages cannot accidentally combine into one institution name.
 
-Author may stand alone (no “vorgelegt von”). The model may point at that span; Python still requires an exact substring of the cover and rejects supervisor-like names (`Prof.`, Erstgutachter, …). Years must appear on the cover; if several do, the model may choose one of them. PDF metadata is not used as a source of author/title.
+Author may stand alone (no “vorgelegt von”). Python grounds the name in the
+cover and rejects supervisor-like names (`Prof.`, Erstgutachter, …). Birth years
+are excluded from year candidates. If no publishing year is present, the
+explicit `publish_year` setting or PDF creation year can supply a flagged
+fallback. Review the fixed `publish_year` setting when the calendar changes.
+Metadata is not a standalone source for author/title.
 
 The sidecar `.json` includes `ok_to_stamp`, `risks`, and `university_matches`. Check it before foil-stamping if any risk is listed.
 
@@ -123,3 +141,75 @@ sibling template and a cover-grounded title. If the model changes title words
 or supplies no title, the title variant is skipped; `variant_errors` explains
 why. A supplied title that fails validation also adds `title_not_on_cover`
 to `risks`. This does not prevent writing the regular cover.
+
+## Retry and completion behavior
+
+Local journals default to `$XDG_STATE_HOME/thesis-cover` or
+`~/.local/state/thesis-cover`; set `state_dir` to override. Keep this directory
+on local persistent storage. A journal records prepared fields, published files,
+and completion independently of the source's archive move.
+
+- An interrupted sidecar/output write resumes without another model call once
+  fields are prepared.
+- A completed job whose archive move failed only retries archival. Even if an
+  operator has already moved the finished UPFs, it does not regenerate them.
+- A changed source file or changed processing configuration is a new job.
+- To deliberately regenerate identical completed input, use
+  `--once /path/to/thesis.pdf --force`.
+- Output names include a short journal-generation suffix so retries retain
+  ownership of their filenames and separate jobs cannot claim the same name.
+- `--once` generates outputs but does not archive the input; watcher jobs do.
+
+Events and rescans feed one bounded worker. Copy-stability checks happen in
+that worker. Transient failures retry after `retry_seconds`, including when
+periodic rescanning is disabled. Rescans also recover events missed by a
+network share; retain the default interval for normal operation.
+
+## Extraction and scheduling limits
+
+| Setting | Default | Meaning |
+|---|---:|---|
+| `ocr_image_max_edge` | 1600 | Maximum embedded-image edge; smaller images are never upscaled |
+| `ocr_image_limit` | 12 | Maximum OCR attempts on embedded images |
+| `ocr_timeout_seconds` | 8 | Maximum time per OCR call, including language fallback |
+| `ocr_budget_seconds` | 20 | OCR pass budget; embedded and full-page passes have separate budgets |
+| `ocr_render_timeout_seconds` | 15 | Full-page rasterization timeout, also bounded by the pass budget |
+| `watch_queue_limit` | 256 | Maximum pending jobs, including delayed retries |
+| `retry_seconds` | 60 | Delay before retrying a transient failure |
+
+Identical embedded images are OCR'd once per PDF. German/English OCR falls back
+to English if German language data is unavailable. The model input reserves
+space for digital fields and image-derived institution text separately.
+
+## Timing and benchmarks
+
+Logs separate extraction from inference and include queue, settling, and staging
+times. Sidecars include extraction timings, page/source provenance, and model
+request metrics (load, prompt evaluation, generation, token counts, completion
+reason). Ollama durations are reported in **nanoseconds**, wall times in seconds.
+
+Run repeated real inferences without publishing to the production output folder:
+
+```bash
+.venv/bin/python benchmark_cover.py /path/to/thesis.pdf --config config.json --runs 3
+```
+
+The benchmark uses temporary outputs/journals, disables notifications, leaves
+the source PDF untouched, and prints JSON results. It still uses the configured
+model and reads the configured templates. See `PERFORMANCE.md` for measurements.
+
+## Code and dependencies
+
+- `thesis_cover_watch.py`: orchestration, field heuristics, template roles, CLI
+- `cover_extract.py`: source-aware extraction and OCR budgets
+- `cover_model.py`: API failures and inference diagnostics
+- `cover_fields.py`: shared blocking decisions and institution notes
+- `cover_jobs.py`: stable snapshots, job locking/journals, atomic publication
+- `cover_queue.py`: deduplicated serial worker and retries
+- `cover_config.py`: normalized defaults and validation
+- `cover_upf.py`: UPF text parsing/encoding
+
+`requirements.txt` uses the tested pins in `constraints.txt`. Update those pins
+deliberately and run the regression suite. Virtual environments are local and
+not version-controlled. `template_rename_map.json` is historical migration
+data, not an active institution catalog.

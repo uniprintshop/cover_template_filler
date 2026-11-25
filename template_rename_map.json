@@ -1,4 +1,5 @@
 {
+ "_note": "Historical migration record only. The institutions below are not the runtime catalog and may contain superseded assignments; use config.example.json/config.json for current membership.",
  "renames": {
   "ASPV NRW.upf": "HSPV_NRW_ASPV.upf",
   "Aalen HS.upf": "Aalen_Hochschule.upf",
