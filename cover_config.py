@@ -50,6 +50,9 @@ def normalize_config(data: dict, base: Path) -> dict:
         value = model.setdefault(key, default)
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ValueError(f"model.{key} must be a positive integer")
+    threads = model.get("num_thread")
+    if threads is not None and (isinstance(threads, bool) or not isinstance(threads, int) or threads <= 0):
+        raise ValueError("model.num_thread must be a positive integer")
     if cfg.get("publish_year") and not re.fullmatch(r"(?:19|20)\d{2}", str(cfg["publish_year"])):
         raise ValueError("publish_year must be a four-digit year or empty")
     universities = cfg.setdefault("universities", [])

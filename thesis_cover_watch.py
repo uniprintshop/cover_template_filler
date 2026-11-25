@@ -1958,6 +1958,8 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
         raise RuntimeError("Validated fields are not safe to stamp: " + ", ".join(fields.get("risks", [])))
 
     templates_dir = Path(cfg["templates_dir"])
+    if not templates_dir.is_dir():
+        raise RetryableJobError(f"Template directory is temporarily unavailable: {templates_dir}")
     uni_obj = next(
         (u for u in cfg.get("universities", []) if u.get("id") == fields["university_id"]),
         None,
@@ -1997,7 +1999,6 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
     written: list[Path] = []
     outputs: list[dict] = []
     variant_errors: list[str] = []
-    publication_io_errors: list[str] = []
 
     # Optional extra file per template: the TITEL/TITLE sibling variant.
     # Off by default; enable with "write_title_variant": true.
@@ -2018,7 +2019,7 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
         except Exception as exc:
             variant_errors.append(f"plain ({tpl.name}): {exc}")
             if isinstance(exc, OSError):
-                publication_io_errors.append(str(exc))
+                raise RetryableJobError(f"Output publication interrupted: {exc}") from exc
             LOG.exception("Failed to fill template %s", tpl)
 
         if write_title:
@@ -2047,14 +2048,12 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
                 except Exception as exc:
                     variant_errors.append(f"title ({titled.name}): {exc}")
                     if isinstance(exc, OSError):
-                        publication_io_errors.append(str(exc))
+                        raise RetryableJobError(f"Output publication interrupted: {exc}") from exc
                     LOG.exception("Failed to fill title template %s", titled)
             elif single:
                 variant_errors.append(f"no TITEL/TITLE sibling next to {tpl.name}")
                 LOG.info("No TITEL/TITLE sibling for family of %s", tpl.name)
 
-    if publication_io_errors:
-        raise RetryableJobError("Output publication interrupted: " + "; ".join(publication_io_errors))
     if not written:
         raise RuntimeError("Could not write any UPF: " + "; ".join(variant_errors))
 
