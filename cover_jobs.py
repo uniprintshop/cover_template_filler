@@ -35,10 +35,13 @@ def job_lock(source: Path, cfg: dict):
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-def atomic_write(path: Path, data: bytes) -> None:
+def atomic_write(path: Path, data: bytes, *, mode=0o600) -> None:
     """Publish one complete file with a same-directory rename."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary = path.parent / f".{path.name}.{uuid.uuid4().hex}.tmp"
+    # Journals stay private; published files use normal creation permissions
+    # (filtered by the process umask), as the original direct writes did.
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
     try:
         with os.fdopen(fd, "wb") as stream:
             stream.write(data)
@@ -118,7 +121,7 @@ class JobState:
             if hashlib.sha256(path.read_bytes()).hexdigest() != sha:
                 raise RuntimeError(f"Refusing to overwrite a different output: {path}")
         else:
-            atomic_write(path, data)
+            atomic_write(path, data, mode=0o666)
         # If the process crashes after the rename, the hash check above recovers.
         self.record["published"][key] = sha
         self.save()

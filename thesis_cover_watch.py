@@ -1742,7 +1742,7 @@ def _write_upf(template_path: Path, fields: dict, cfg: dict, out_path: Path) -> 
     filled = filled.replace("\r\n", "\n").replace("\n", "\r\n")
     data = filled.encode("utf-8")
     job = cfg.get("_job")
-    retry_io(lambda: job.publish(out_path, data) if job else atomic_write(out_path, data),
+    retry_io(lambda: job.publish(out_path, data) if job else atomic_write(out_path, data, mode=0o666),
              what=f"writing {out_path.name}")
     LOG.info("Wrote %s from %s", out_path.name, template_path.name)
     return out_path
@@ -1788,7 +1788,7 @@ def process_pdf(pdf_path: Path, cfg: dict) -> list[Path]:
             return written
     except (ModelUnavailable, RetryableJobError):
         # A backend outage is retryable; do not create repeated failure files.
-        LOG.warning("Model unavailable; leaving %s queued for retry", pdf_path.name)
+        LOG.warning("Transient processing failure; leaving %s queued for retry", pdf_path.name)
         raise
     except OSError as exc:
         raise RetryableJobError(f"Job I/O interrupted: {exc}") from exc
@@ -2072,12 +2072,12 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
                 ensure_ascii=False,
                 indent=2,
             ).encode("utf-8")
-    retry_io(lambda: job.publish(sidecar, sidecar_data) if job else atomic_write(sidecar, sidecar_data),
+    retry_io(lambda: job.publish(sidecar, sidecar_data) if job else atomic_write(sidecar, sidecar_data, mode=0o666),
              what=f"writing {sidecar.name}")
     if fields.get("notes"):
         notes_path = sidecar.with_name(sidecar.stem + "_NOTES.txt")
         try:
-            atomic_write(notes_path, ("\n\n".join(fields["notes"]).strip() + "\n").encode("utf-8"))
+            atomic_write(notes_path, ("\n\n".join(fields["notes"]).strip() + "\n").encode("utf-8"), mode=0o666)
             LOG.info("Wrote operator notes %s", notes_path.name)
         except OSError:
             LOG.exception("Optional notes could not be written; UPFs and sidecar are complete")

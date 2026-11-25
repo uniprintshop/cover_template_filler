@@ -58,6 +58,15 @@ class JobTests(unittest.TestCase):
         self.assertEqual(output.read_bytes(), b"original")
         self.assertFalse(list(self.root.glob("*.tmp")))
 
+    def test_published_permissions_match_normal_files_but_journals_stay_private(self):
+        normal = self.root / "normal.upf"
+        normal.write_bytes(b"normal")
+        state = jobs.JobState(self.source, "digest", self.cfg)
+        published = self.root / "published.upf"
+        state.publish(published, b"published")
+        self.assertEqual(published.stat().st_mode & 0o777, normal.stat().st_mode & 0o777)
+        self.assertEqual(state.path.stat().st_mode & 0o077, 0)
+
     def test_snapshot_is_local_and_matches_source(self):
         with jobs.staged_pdf(self.source) as (local, digest):
             self.assertNotEqual(local, self.source)
