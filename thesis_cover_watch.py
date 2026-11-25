@@ -35,6 +35,8 @@ from cover_extract import (
     CoverEvidence, compact_cover, extract_digital, extract_ocr,
     extract_page_image_text, get_cover_text, pdf_metadata,
 )
+from cover_config import normalize_config
+from cover_queue import PdfQueue
 
 try:
     import pdfplumber
@@ -83,7 +85,7 @@ def norm(s: str) -> str:
 
 
 def load_config(path: Path) -> dict:
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = normalize_config(json.loads(path.read_text(encoding="utf-8")), path.resolve().parent)
     data["_config_path"] = str(path.resolve())
     return data
 
@@ -876,7 +878,10 @@ def warmup_model(cfg: dict) -> None:
 
 
 def spawn_model_warmup(cfg: dict) -> None:
-    threading.Thread(target=warmup_model, args=(cfg,), daemon=True).start()
+    def warm_when_idle():
+        with _PROCESS_LOCK:
+            warmup_model(cfg)
+    threading.Thread(target=warm_when_idle, daemon=True).start()
 
 
 # Explicit UA for hosted OpenAI-compatible endpoints: see the note in
@@ -1989,7 +1994,6 @@ def _write_upf(template_path: Path, fields: dict, cfg: dict, out_path: Path) -> 
     return out_path
 
 
-_LAST_SETTLE: dict[str, float | None] = {"settle": None}
 _TIMING_WARN_S: dict[str, float] = {"read": 10.0, "model": 15.0, "write": 5.0, "total": 30.0}
 
 
@@ -1997,8 +2001,7 @@ def _log_timings(
     read: float, model: float, write: float, total: float, source: str, cfg: dict
 ) -> None:
     """One-line per-PDF stage timing so slow runs diagnose themselves."""
-    settle = _LAST_SETTLE.get("settle")
-    _LAST_SETTLE["settle"] = None
+    settle = cfg.get("_timings", {}).get("settle")
     settle_txt = f"settle {settle:.1f}s, " if settle is not None else ""
     LOG.info(
         "timings: %sread %.1fs (source=%s), model %.1fs, write %.1fs, total %.1fs",
@@ -2396,7 +2399,7 @@ def notify(cfg: dict, summary: str, body: str, urgent: bool = False, app: str = 
         pass
 
 
-def handle_pdf(pdf_path: Path, cfg: dict, origin: str) -> None:
+def handle_pdf(pdf_path: Path, cfg: dict, origin: str, timings=None) -> bool:
     """Process one PDF and move it aside; never raises.
 
     Both the event watcher (observer thread) and scan_existing (main thread)
@@ -2407,7 +2410,8 @@ def handle_pdf(pdf_path: Path, cfg: dict, origin: str) -> None:
     with _PROCESS_LOCK:
         if not pdf_path.exists():
             LOG.info("Skipping %s (%s) — already handled", pdf_path.name, origin)
-            return
+            return True
+        cfg = {**cfg, "_timings": timings or {}}
         notify(cfg, "Cover wird bearbeitet", pdf_path.name, app="Thesis Cover – läuft")
         dest: str | None = None
         try:
@@ -2415,7 +2419,7 @@ def handle_pdf(pdf_path: Path, cfg: dict, origin: str) -> None:
             dest = cfg.get("processed_dir")
         except (ModelUnavailable, RetryableJobError) as exc:
             LOG.warning("Deferring %s: %s", pdf_path.name, exc)
-            return
+            return False
         except Exception as exc:
             LOG.error("Failed on %s (%s): %s", pdf_path, origin, exc)
             notify(
@@ -2427,17 +2431,20 @@ def handle_pdf(pdf_path: Path, cfg: dict, origin: str) -> None:
             )
             dest = cfg.get("failed_dir")
         if not dest:
-            return
+            return True
         try:
             move_aside(pdf_path, Path(dest))
         except Exception:
             # A failure to file the PDF away must never take the watcher down.
             LOG.exception("Could not move %s to %s — leaving it in the watch folder", pdf_path, dest)
+            return False
+        return True
 
 
 class PdfHandler(FileSystemEventHandler):
-    def __init__(self, cfg: dict):
+    def __init__(self, cfg: dict, work: PdfQueue):
         self.cfg = cfg
+        self.work = work
 
     def on_created(self, event):  # noqa: N802
         if getattr(event, "is_directory", False):
@@ -2460,51 +2467,20 @@ class PdfHandler(FileSystemEventHandler):
     def _handle_event(self, path: Path) -> None:
         if path.suffix.lower() != ".pdf":
             return
-        # No event-dedup guard here: duplicate events for the same in-flight
-        # file are already safe — handle_pdf serializes on a lock, re-checks
-        # existence, and every processing path ends with move_aside. A stateful
-        # guard would only risk swallowing a genuine re-drop (same filename).
-        settle = float(self.cfg.get("watch_settle_seconds", 1.5))
-        t_event = time.monotonic()
-        if not wait_until_stable(path, settle):
-            # Either the file vanished while we waited (already handled
-            # elsewhere) or it is still being copied; the periodic rescan
-            # will pick it up once it is complete.
-            LOG.warning("File did not stabilize, skipping for now: %s", path)
-            return
-        _LAST_SETTLE["settle"] = time.monotonic() - t_event
-        handle_pdf(path, self.cfg, origin="watch")
+        self.work.submit(path, "watch")
 
 
-def scan_existing(cfg: dict) -> None:
+def scan_existing(cfg: dict, work: PdfQueue) -> None:
     watch = Path(cfg["watch_dir"])
     if not watch.is_dir():
         LOG.error("watch_dir not found: %s", watch)
         return
-    pdfs = sorted(watch.glob("*.pdf")) + sorted(watch.glob("*.PDF"))
-    seen: set[str] = set()
-    unique: list[Path] = []
-    for pdf in pdfs:
-        key = str(pdf.resolve())
-        if key not in seen:
-            seen.add(key)
-            unique.append(pdf)
+    unique = sorted(p for p in watch.iterdir() if p.suffix.lower() == ".pdf" and p.is_file())
     if not unique:
         LOG.info("No PDFs in %s", watch)
         return
-    settle = float(cfg.get("watch_settle_seconds", 1.5))
     for pdf in unique:
-        # A file whose size is still changing is being copied over the
-        # network right now. Parsing it mid-write would fail ("No /Root
-        # object") and exile the still-arriving file into failed/. Skip
-        # it; the next rescan picks it up once the copy has finished.
-        t_scan = time.monotonic()
-        if not wait_until_stable(pdf, settle):
-            LOG.info("Skipping %s (scan) — file still changing or gone", pdf.name)
-            _LAST_SETTLE["settle"] = None
-            continue
-        _LAST_SETTLE["settle"] = time.monotonic() - t_scan
-        handle_pdf(pdf, cfg, origin="scan")
+        work.submit(pdf, "scan")
 
 
 def _watcher_dead(observer) -> bool:
@@ -2574,6 +2550,7 @@ def main() -> int:
     ap.add_argument("--config", type=Path, default=Path("config.json"))
     ap.add_argument("--once", type=Path, help="Process a single PDF and exit")
     ap.add_argument("--scan-existing", action="store_true")
+    ap.add_argument("--force", action="store_true", help="Regenerate an already completed --once job")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -2587,11 +2564,20 @@ def main() -> int:
     if not args.config.is_file():
         LOG.error("Config not found: %s", args.config)
         return 2
-    cfg = load_config(args.config)
+    try:
+        cfg = load_config(args.config)
+    except (ValueError, OSError) as exc:
+        LOG.error("Invalid configuration: %s", exc)
+        return 2
+    if args.force and not args.once:
+        ap.error("--force requires --once")
+    cfg["force"] = args.force
+    for key in ("watch_dir", "templates_dir"):
+        if not Path(cfg[key]).is_dir():
+            LOG.error("Required input directory is unavailable: %s", cfg[key])
+            return 2
     ensure_dirs(
-        Path(cfg["watch_dir"]),
         Path(cfg["output_dir"]),
-        Path(cfg["templates_dir"]),
         Path(cfg.get("processed_dir") or str(Path(cfg["watch_dir"]) / "processed")),
         Path(cfg.get("failed_dir") or str(Path(cfg["watch_dir"]) / "failed")),
     )
@@ -2607,18 +2593,23 @@ def main() -> int:
             LOG.error("Failed on %s: %s", args.once, exc)
             return 1
 
-    if args.scan_existing:
-        scan_existing(cfg)
-
     if Observer is None:
         LOG.error("watchdog is not installed. pip install watchdog  (or use --once)")
         return 1
 
-    handler = PdfHandler(cfg)
+    work = PdfQueue(
+        lambda path: wait_until_stable(path, cfg["watch_settle_seconds"]),
+        lambda path, origin, timings: handle_pdf(path, cfg, origin, timings),
+        retry_seconds=cfg["retry_seconds"], limit=cfg["watch_queue_limit"],
+    )
+    handler = PdfHandler(cfg, work)
     observer = _start_observer(cfg, handler)
     if observer is None:
         LOG.error("watchdog is not installed. pip install watchdog  (or use --once)")
         return 1
+    work.start()
+    if args.scan_existing:
+        scan_existing(cfg, work)
     spawn_model_warmup(cfg)
     last_warm = time.monotonic()
     LOG.info("Watching %s  →  %s", cfg["watch_dir"], cfg["output_dir"])
@@ -2634,9 +2625,8 @@ def main() -> int:
                 # otherwise leave the process running but deaf to new PDFs
                 # (e.g. after an AFP dropout). Recreate the watcher in-place;
                 # only give up (and let systemd restart us) if that fails.
-                was_alive = observer.is_alive()
                 healed = _heal_observer(cfg, handler, observer, backoff)
-                if healed is observer and not was_alive:
+                if healed is observer:
                     exit_code = 1
                     break
                 observer = healed
@@ -2647,7 +2637,7 @@ def main() -> int:
             if interval and time.time() - last >= interval:
                 last = time.time()
                 try:
-                    scan_existing(cfg)
+                    scan_existing(cfg, work)
                 except Exception:
                     LOG.exception("Periodic rescan failed — watcher keeps running")
             if time.monotonic() - last_warm >= _MODEL_REWARM_S:
@@ -2659,6 +2649,7 @@ def main() -> int:
         LOG.info("Interrupted — stopping watcher")
     finally:
         observer.stop()
+        work.stop()
     observer.join()
     return exit_code
 
