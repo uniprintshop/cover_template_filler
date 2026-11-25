@@ -19,8 +19,15 @@ class JobTests(unittest.TestCase):
                     "output_dir": str(self.root / "out")}
 
     def test_archive_failure_never_repeats_generation(self):
+        outputs = [self.root / "out" / "cover.upf"]
+        outputs[0].parent.mkdir(parents=True, exist_ok=True)
+
+        def generate_and_write(*args, **kwargs):
+            outputs[0].write_bytes(b"cover")
+            return outputs
+
         with self.assertLogs(w.LOG, level="ERROR"), \
-                patch.object(w, "_process_pdf_inner", return_value=[self.root / "cover.upf"]) as generate, \
+                patch.object(w, "_process_pdf_inner", side_effect=generate_and_write) as generate, \
                 patch.object(w, "move_aside", side_effect=OSError("share offline")):
             w.handle_pdf(self.source, self.cfg, "test")
             w.handle_pdf(self.source, self.cfg, "test")
@@ -32,6 +39,38 @@ class JobTests(unittest.TestCase):
             self.source.write_bytes(b"new content")
             w.process_pdf(self.source, self.cfg)
         self.assertEqual(generate.call_count, 2)
+
+    def test_missing_outputs_are_regenerated(self):
+        outputs = [self.root / "out" / "cover.upf"]
+        outputs[0].parent.mkdir(parents=True, exist_ok=True)
+
+        def generate_and_write(*args, **kwargs):
+            outputs[0].write_bytes(b"cover")
+            return outputs
+
+        with patch.object(w, "_process_pdf_inner", side_effect=generate_and_write) as generate, \
+                patch.object(w, "move_aside"):
+            w.process_pdf(self.source, self.cfg)
+            outputs[0].write_bytes(b"placeholder")
+            self.assertEqual(generate.call_count, 1)
+            outputs[0].unlink()
+            w.process_pdf(self.source, self.cfg)
+        self.assertEqual(generate.call_count, 2)
+        self.assertTrue(outputs[0].exists())
+
+    def test_existing_outputs_still_skip_generation(self):
+        outputs = [self.root / "out" / "cover.upf"]
+        outputs[0].parent.mkdir(parents=True, exist_ok=True)
+
+        def generate_and_write(*args, **kwargs):
+            outputs[0].write_bytes(b"cover")
+            return outputs
+
+        with patch.object(w, "_process_pdf_inner", side_effect=generate_and_write) as generate, \
+                patch.object(w, "move_aside"):
+            w.process_pdf(self.source, self.cfg)
+            w.process_pdf(self.source, self.cfg)
+        self.assertEqual(generate.call_count, 1)
 
     def test_force_creates_a_new_generation(self):
         first = jobs.JobState(self.source, "digest", self.cfg)

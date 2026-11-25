@@ -1836,8 +1836,24 @@ def process_pdf(pdf_path: Path, cfg: dict) -> list[Path]:
         with job_lock(pdf_path, cfg), staged_pdf(pdf_path) as (local_pdf, digest):
             job = JobState(pdf_path, digest, cfg)
             if job.record["completed"]:
-                LOG.info("Already generated %s — retrying archival only", pdf_path.name)
-                return [Path(p) for p in job.record["outputs"]]
+                outputs = [Path(p) for p in job.record["outputs"]]
+                missing = [p for p in outputs if not p.exists()]
+                if missing:
+                    # Outputs vanished from the share (e.g. deleted by an
+                    # operator or lost during a mount reconnect). Re-run the
+                    # job instead of claiming archival success without files.
+                    LOG.warning(
+                        "Recorded outputs missing, regenerating %s: %s",
+                        pdf_path.name,
+                        ", ".join(p.name for p in missing),
+                    )
+                    job.record["completed"] = False
+                    for p in missing:
+                        job.record["published"].pop(str(p), None)
+                    job.save()
+                else:
+                    LOG.info("Already generated %s — retrying archival only", pdf_path.name)
+                    return outputs
             runtime = {**cfg, "_job": job, "_source_pdf": str(pdf_path),
                        "_timings": {**cfg.get("_timings", {}), "stage": time.monotonic() - started}}
             with capture_inference():
