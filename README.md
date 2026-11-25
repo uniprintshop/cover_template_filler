@@ -203,6 +203,34 @@ For a varied, ground-truthed corpus instead of repeating one PDF, see
 covers, including 18 logo-only cases using real template branding, then scores
 real-model outputs and timing in isolated experiment directories.
 
+### Measured reliability (2026-11-25)
+
+With the current safeguards (`ornith-1.5:9b`, one full-corpus round):
+
+- **44/46 correct outcomes**, no incorrect stamps; median 16.2s, p95 ~32s.
+- The two remaining cases are safe refusals (a small noisy wordmark and a
+  text-free graphic mark).
+- Six critical cases (partner logo, ambiguity, name/birthplace, page-two
+  footer, …) passed 18/18 attempts across three mixed-order repeats.
+- Earlier defects — partner logo chosen over the awarding institution,
+  ambiguous awarders stamped, birthplace included in the author name — were
+  fixed by prompt, evidence-context, and validation changes; see
+  [`RELIABILITY_IMPROVEMENTS.md`](RELIABILITY_IMPROVEMENTS.md) and
+  [`RELIABILITY_BASELINE.md`](RELIABILITY_BASELINE.md).
+
+Small-model comparison (six mixed cases, one round each; see
+[`MODEL_COMPARISON.md`](MODEL_COMPARISON.md)):
+
+| Model | Correct | Median | Notes |
+|---|---:|---:|---|
+| `ornith-1.5:9b` | 6/6 | 16.6s | Only tested model handling the full workload |
+| `lfm2.5:8b` | 1/6 | 11.4s | Fast but refuses nearly everything |
+| `bonsai-2:4b` | 1/6 | 28.9s | Slowest; published wrong fields (dangerous) |
+| `lfm3:1.7b` | 2/6 | 7.4s | Fastest; frequent wrong refusals |
+
+The validation guards prevented every wrong-foil stamp on all models.
+`ornith-1.5:9b` is the recommended model.
+
 ## Code and dependencies
 
 - `thesis_cover_watch.py`: orchestration, field heuristics, template roles, CLI
