@@ -68,12 +68,16 @@ def _logo_text_plausible(text: str) -> bool:
 
 
 def _ocr(image, lang, timeout, config=""):
+    started = time.monotonic()
     try:
         return pytesseract.image_to_string(image, lang=lang, config=config, timeout=timeout) or ""
     except pytesseract.TesseractError as exc:
         if lang == "eng" or "tessdata" not in str(exc).lower():
             raise
-        return pytesseract.image_to_string(image, lang="eng", config=config, timeout=timeout) or ""
+        remaining = timeout - (time.monotonic() - started)
+        if remaining <= 0:
+            raise RuntimeError("OCR language fallback exceeded its time budget") from exc
+        return pytesseract.image_to_string(image, lang="eng", config=config, timeout=remaining) or ""
 
 
 def _digital_pages(path, pages):
@@ -159,8 +163,9 @@ def _full_page_blocks(path, pages, dpi, lang, cfg):
     return blocks
 
 
-def extract_ocr(pdf_path: Path, pages: int, dpi: int, lang: str, cfg=None) -> str:
-    return "\n\n".join(b.text for b in _full_page_blocks(pdf_path, pages, dpi, lang, cfg or {}))
+def extract_ocr(pdf_path: Path, pages: int, dpi: int, lang: str, cfg=None, *, return_evidence=False):
+    blocks = _full_page_blocks(pdf_path, pages, dpi, lang, cfg or {})
+    return CoverEvidence(blocks, "ocr") if return_evidence else "\n\n".join(b.text for b in blocks)
 
 
 def pdf_metadata(pdf_path: Path, reader=None) -> dict:

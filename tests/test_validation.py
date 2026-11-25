@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import thesis_cover_watch as w
+from cover_fields import set_institution_notes
 
 
 class ValidationTests(unittest.TestCase):
@@ -37,3 +38,22 @@ class ValidationTests(unittest.TestCase):
         blocks = w.find_text_blocks(filled)
         self.assertEqual(len(blocks), 2)
         self.assertIn(fields["author"], blocks[1].joined())
+
+    def test_institution_note_replacement_preserves_other_notes(self):
+        fields = {"notes": ["Title omitted", "Old institution outcome"],
+                  "institution_notes": ["Old institution outcome"]}
+        set_institution_notes(fields, ["Recovered by OCR"])
+        self.assertEqual(fields["notes"], ["Title omitted", "Recovered by OCR"])
+
+    def test_all_repository_templates_roundtrip_author_and_year(self):
+        root = Path(__file__).resolve().parents[1]
+        cfg = w.load_config(root / "config.example.json")
+        templates = list((root / "Prägungen").glob("*.upf"))
+        self.assertGreater(len(templates), 200)
+        for template in templates:
+            with self.subTest(template=template.name), patch.object(w.LOG, "warning"):
+                fields = {"degree_text": "Masterarbeit", "author": "Audit Example", "year": "2026", "title": "A title"}
+                filled = w.fill_upf(template.read_text(), fields, cfg)
+                decoded = " ".join(b.joined() for b in w.find_text_blocks(filled))
+                self.assertIn("Audit Example", decoded)
+                self.assertIn("2026", decoded)

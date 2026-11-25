@@ -1,6 +1,7 @@
 """Stable input snapshots and durable, resumable output publication."""
 
 import hashlib
+import fcntl
 import json
 import os
 import tempfile
@@ -11,6 +12,27 @@ from pathlib import Path
 
 class RetryableJobError(RuntimeError):
     """Leave the source in the watch folder and retry on a later scan."""
+
+
+def state_root(cfg):
+    return Path(cfg.get("state_dir") or Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "thesis-cover")
+
+
+@contextmanager
+def job_lock(source: Path, cfg: dict):
+    """Protect the journal when --once and a watcher target the same source."""
+    key = hashlib.sha256(str(source.resolve()).encode()).hexdigest()
+    path = state_root(cfg) / "locks" / f"{key}.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise RetryableJobError(f"Another worker owns {source.name}") from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def atomic_write(path: Path, data: bytes) -> None:
@@ -63,8 +85,7 @@ class JobState:
                     if not k.startswith("_") and k not in ("force", "state_dir", "notify")}
         identity = json.dumps([str(source.resolve()), digest, relevant], sort_keys=True, ensure_ascii=False)
         key = hashlib.sha256(identity.encode()).hexdigest()
-        root = Path(cfg.get("state_dir") or Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "thesis-cover")
-        self.path = root / "jobs" / f"{key}.json"
+        self.path = state_root(cfg) / "jobs" / f"{key}.json"
         if self.path.exists() and not cfg.get("force"):
             self.record = json.loads(self.path.read_text(encoding="utf-8"))
             if self.record.get("version") != 1:

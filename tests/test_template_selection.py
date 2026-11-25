@@ -102,12 +102,10 @@ class TemplateSelectionTests(unittest.TestCase):
         self.assertTrue(any("unavailable" in n for n in fields["notes"]))
 
     def test_cover_without_institution_is_reported_as_cover_problem(self):
-        # The model works (author/title/year are read) but the cover is a
-        # fill-in template that names no institution at all ("Hagen" is only
-        # the place of birth). The failure must be reported as "the cover does
-        # not name a university", not as "model unavailable", and must not
-        # promise that adding the school to config.json would fix it
-        # (Schachtsiek 2026 case).
+        # A successful model read with no university is an unresolved
+        # extraction, not an API outage. This text-only fixture deliberately
+        # omits the real cover's raster banner; it cannot prove that the
+        # original PDF names no institution.
         cover = (
             "Masterarbeit\n"
             "Titel der Arbeit // Title of Thesis\n"
@@ -132,7 +130,7 @@ class TemplateSelectionTests(unittest.TestCase):
         self.assertIn("no_university_on_cover", fields["risks"])
         self.assertFalse(fields["ok_to_stamp"])
         joined = " ".join(fields["notes"])
-        self.assertIn("does not name the awarding university", joined)
+        self.assertIn("No awarding institution was identified in the extracted cover text", joined)
         self.assertNotIn("unavailable", joined)
 
     def test_aachen_is_not_mistaken_for_birthplace(self):
@@ -384,7 +382,7 @@ class TemplateSelectionTests(unittest.TestCase):
         self.assertEqual(rescued["university_id"], "")
         self.assertIn("no_university_on_cover", rescued["risks"])
         self.assertFalse(rescued["ok_to_stamp"])
-        self.assertTrue(any("neither names an institution" in n for n in rescued["notes"]))
+        self.assertTrue(any("neither extraction identified an institution" in n for n in rescued["notes"]))
 
 
 if __name__ == "__main__":

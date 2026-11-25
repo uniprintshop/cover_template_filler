@@ -6,8 +6,25 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 LOG = logging.getLogger("thesis-cover")
+_METRICS = ContextVar("inference_metrics", default=None)
+
+
+@contextmanager
+def capture_inference():
+    calls = []
+    token = _METRICS.set(calls)
+    try:
+        yield calls
+    finally:
+        _METRICS.reset(token)
+
+
+def inference_metrics():
+    return list(_METRICS.get() or [])
 
 
 class ModelError(RuntimeError):
@@ -48,6 +65,8 @@ def request_json(request, timeout: int) -> dict:
         "eval_duration", "done_reason", "usage",
     ) if k in body}
     metrics["wall_seconds"] = round(time.monotonic() - started, 3)
+    if _METRICS.get() is not None:
+        _METRICS.get().append(metrics)
     LOG.info("Inference metrics: %s", json.dumps(metrics, ensure_ascii=False))
     if body.get("error"):
         raise InvalidModelResponse(f"Model API error: {body['error']}")

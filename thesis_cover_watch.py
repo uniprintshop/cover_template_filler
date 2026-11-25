@@ -20,43 +20,27 @@ import sys
 import threading
 import time
 import unicodedata
-import urllib.error
 import urllib.request
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
 from cover_model import (
     InvalidModelResponse, ModelError, ModelOutcome, ModelUnavailable,
-    request_json, require_content,
+    capture_inference, inference_metrics, request_json, require_content,
 )
-from cover_jobs import JobState, RetryableJobError, atomic_write, staged_pdf
+from cover_jobs import JobState, RetryableJobError, atomic_write, job_lock, staged_pdf
 from cover_extract import (
     CoverEvidence, compact_cover, extract_digital, extract_ocr,
     extract_page_image_text, get_cover_text, pdf_metadata,
 )
 from cover_config import normalize_config
 from cover_queue import PdfQueue
-
-try:
-    import pdfplumber
-except ImportError:
-    pdfplumber = None
-
-try:
-    from pypdf import PdfReader
-except ImportError:
-    PdfReader = None
-
-try:
-    from pdf2image import convert_from_path
-except ImportError:
-    convert_from_path = None
-
-try:
-    import pytesseract
-except ImportError:
-    pytesseract = None
+from cover_fields import can_stamp, set_institution_notes
+from cover_upf import (
+    GlyphLine, TextBlock, _matching_brace, encode_glyph_line, encode_string_line,
+    find_text_blocks, parse_glyph_lines, parse_string_lines, replace_list,
+)
 
 try:
     from watchdog.events import FileSystemEventHandler
@@ -144,10 +128,6 @@ def wait_until_stable(path: Path, settle: float) -> bool:
     except FileNotFoundError:
         return False
 
-
-# ---------------------------------------------------------------------------
-# PDF text
-# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # heuristic candidates (model must copy from these / cover text)
@@ -811,6 +791,7 @@ def call_ollama(
     num_ctx: int = 8192,
     num_thread: int | None = None,
     keep_alive: str = "30m",
+    warmup_only: bool = False,
 ) -> str:
     options = {"temperature": 0.0, "num_predict": num_predict, "num_ctx": num_ctx}
     if num_thread:
@@ -841,6 +822,8 @@ def call_ollama(
     message = body.get("message") or {}
     if not isinstance(message, dict):
         raise InvalidModelResponse("Ollama response has no message object")
+    if warmup_only:
+        return message.get("content") or ""
     return require_content(message.get("content"), body.get("done_reason"), message.get("thinking"))
 
 
@@ -870,7 +853,8 @@ def warmup_model(cfg: dict) -> None:
             num_ctx=int(mcfg.get("num_ctx", 8192)),
             num_thread=mcfg.get("num_thread") or None,
             keep_alive=str(mcfg.get("keep_alive", "30m")),
-            num_predict=8,
+            num_predict=1,
+            warmup_only=True,
         )
         LOG.info("Model warmup done — model resident, SYSTEM prompt cached")
     except Exception as exc:
@@ -1077,8 +1061,8 @@ def _model_fields(cover_text: str, meta: dict, cfg: dict, universities: list[dic
     """Single model call: extract the text fields AND the institution id.
 
     The model is the only component that identifies the university. On any
-    failure (backend disabled, API error) it returns {} and the caller must
-    treat the institution as unidentified - never guessed.
+    failure it raises an explicit ModelError; the caller must distinguish a
+    backend outage from successful extraction without an institution.
     """
     mcfg = cfg.get("model", {})
     backend = mcfg.get("backend", "ollama")
@@ -1213,30 +1197,28 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict, lenient: bool = False
     notes: list[str] = []
     if "title_not_on_cover" in risks:
         notes.append("Title omitted: the model's title could not be matched to the PDF cover.")
+    institution_notes: list[str] = []
     if "university_not_on_cover" in risks:
-        notes.append(
-            f"The model identified '{uni_id}', but no part of that school's foil "
-            "filename appears on the cover - not stamped. Check the cover, or fix "
+        institution_notes.append(
+            f"The model identified '{uni_id}', but no configured name evidence "
+            "appears on the cover - not stamped. Check the cover, or fix "
             f"the '{uni_id}' entry's template in config.json."
         )
     unknown_id = next((r for r in risks if r.startswith("university_id_not_in_catalog")), None)
     if unknown_id:
-        notes.append(
+        institution_notes.append(
             f"The model returned institution id '{unknown_id.split(':', 1)[1]}', "
             "which is not in config.json - add it there, then reprocess."
         )
     if "no_university_on_cover" in risks:
-        if _model_read_cover(model_fields):
-            notes.append(
-                "The model read the cover normally (author/title/year) but found no "
-                "institution name on it - the cover does not name the awarding "
-                "university. A human must identify it (e.g. from the examiners or the "
-                "course of study) and add it to the cover, or stamp it manually. Adding "
-                "the school to config.json will not help: the model reads the institution "
-                "from the cover text."
+        if outcome.status == "ok":
+            institution_notes.append(
+                "No awarding institution was identified in the extracted cover text. "
+                "Review the original PDF, its logo/text extraction, and the configured "
+                "institution names before reprocessing or stamping manually."
             )
         else:
-            notes.append(
+            institution_notes.append(
                 "The model did not identify an awarding institution (the model/API "
                 "may be unavailable). Reprocess once the model is reachable."
             )
@@ -1260,25 +1242,13 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict, lenient: bool = False
 
     # A university that is unknown, ungrounded, or foiless is never stamped:
     # _process_pdf_inner raises on these before any foil is written.
-    blocking = any(
-        r == "multiple_years_unresolved"
-        or r == "author_looks_like_supervisor"
-        or r == "no_university_on_cover"
-        or r == "university_not_on_cover"
-        or r.startswith("university_id_not_in_catalog")
-        or r == "no_template_for_university"
-        for r in risks
-    )
-    ok_to_stamp = (not blocking) and bool(uni) and bool(author) and bool(year)
+    ok_to_stamp = can_stamp({"risks": risks, "university_id": uni_id if uni else "", "author": author, "year": year})
 
     return {
         "university_id": uni["id"] if uni else "",
         "university_template": "",
         "university_raw": uni_id,
         "university_matches": uni_matches,
-        "template_candidates": [],
-        "template_model": "",
-        "template_learned": False,
         "author": author,
         "title": title,
         "degree_type": dt,
@@ -1286,21 +1256,12 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict, lenient: bool = False
         "year": year,
         "candidates": candidates,
         "risks": risks,
-        "notes": notes,
+        "notes": notes + institution_notes,
+        "institution_notes": institution_notes,
         "ok_to_stamp": ok_to_stamp,
         "model_raw": model_fields,
         "model_outcome": asdict(outcome),
     }
-
-
-# Notes that describe the institution outcome; the OCR second-read replaces
-# them, so a stale digital-pass message never sits next to a newer one.
-_INST_NOTE_PREFIXES = (
-    "The model identified ",
-    "The model returned institution id ",
-    "The model read the cover normally",
-    "The model did not identify an awarding institution",
-)
 
 
 def _institution_unresolved(risks: list[str]) -> bool:
@@ -1335,15 +1296,15 @@ def _rescue_university_from_ocr(pdf_path: Path, meta: dict, cfg: dict, fields: d
     templates_dir = Path(cfg["templates_dir"]) if cfg.get("templates_dir") else None
     ocr_started = time.monotonic()
     try:
-        ocr_text = compact_cover(
-            extract_ocr(
+        ocr_result = extract_ocr(
                 pdf_path,
                 2,
                 int(cfg.get("ocr_dpi", 300)),
                 cfg.get("ocr_lang", "deu+eng"),
                 cfg,
+                return_evidence=True,
             )
-        )
+        ocr_text = compact_cover(ocr_result.text if isinstance(ocr_result, CoverEvidence) else ocr_result)
     except Exception as exc:
         LOG.warning("OCR second-read unavailable (%s) - no rescue possible", exc)
         return fields, False
@@ -1353,6 +1314,8 @@ def _rescue_university_from_ocr(pdf_path: Path, meta: dict, cfg: dict, fields: d
     fields.setdefault("extraction_timings", {})["rescue_ocr_seconds"] = time.monotonic() - ocr_started
     try:
         ocr_cfg = {k: v for k, v in cfg.items() if k != "_evidence"}
+        if isinstance(ocr_result, CoverEvidence):
+            ocr_cfg["_evidence"] = ocr_result
         ocr_fields = _model_fields(ocr_text, meta, ocr_cfg, universities, fields.get("candidates") or {})
     except ModelError as exc:
         status = "unavailable" if isinstance(exc, ModelUnavailable) else "invalid_response"
@@ -1362,7 +1325,10 @@ def _rescue_university_from_ocr(pdf_path: Path, meta: dict, cfg: dict, fields: d
         return fields, True
     ocr_uni_id = str(ocr_fields.get("university") or "").strip()
     LOG.info("OCR second-read: model picked %r from the rendered cover", ocr_uni_id)
-    uni, ur, uni_matches = resolve_university(ocr_text, ocr_uni_id, universities, templates_dir, lenient=True)
+    uni, ur, uni_matches = resolve_university(
+        ocr_text, ocr_uni_id, universities, templates_dir, lenient=True,
+        evidence=ocr_result if isinstance(ocr_result, CoverEvidence) else None,
+    )
 
     fields["risks"] = [
         r for r in fields.get("risks", [])
@@ -1372,241 +1338,35 @@ def _rescue_university_from_ocr(pdf_path: Path, meta: dict, cfg: dict, fields: d
     fields["risks"].extend(ur)
     fields["university_raw"] = ocr_uni_id or fields.get("university_raw", "")
     fields["ocr_escalated"] = True
-    fields["notes"] = [n for n in fields.get("notes", []) if not n.startswith(_INST_NOTE_PREFIXES)]
+    institution_notes = []
 
     if uni is not None and not ur:
         fields["university_id"] = uni["id"]
         fields["university_matches"] = uni_matches
-        fields["notes"].append(
+        institution_notes.append(
             "The awarding institution is not in the PDF's text layer (it is a "
             "banner/logo). It was recovered from a full-page OCR of the cover and "
             "confirmed against the school's configured name."
         )
     elif ocr_uni_id:
-        fields["notes"].append(
+        institution_notes.append(
             "The cover was read from its text layer and again by full-page OCR; the "
             f"OCR read named '{ocr_uni_id}', which could not be confirmed on the "
             "cover, so nothing was stamped."
         )
     else:
-        fields["notes"].append(
+        institution_notes.append(
             "The cover was read from its text layer and again by full-page OCR; "
-            "neither names an institution we can match, so none was stamped."
+            "neither extraction identified an institution we can match, so none was stamped."
         )
-    blocking = any(
-        r == "multiple_years_unresolved"
-        or r == "author_looks_like_supervisor"
-        or r == "no_university_on_cover"
-        or r == "university_not_on_cover"
-        or r.startswith("university_id_not_in_catalog")
-        or r == "no_template_for_university"
-        for r in fields["risks"]
-    )
-    fields["ok_to_stamp"] = (not blocking) and bool(uni) and bool(fields.get("author")) and bool(fields.get("year"))
+    set_institution_notes(fields, institution_notes)
+    fields["ok_to_stamp"] = can_stamp(fields)
     return fields, True
 
 
 # ---------------------------------------------------------------------------
 # UPF text blocks
 # ---------------------------------------------------------------------------
-
-@dataclass
-class GlyphLine:
-    align: str
-    glyphs: list[tuple[str, str, str, str]]  # char, font, size, weight
-    plain: str | None = None  # List<string> stores whole line here
-
-    def text(self) -> str:
-        if self.plain is not None:
-            return self.plain
-        return "".join(g[0] for g in self.glyphs)
-
-
-@dataclass
-class TextBlock:
-    start: int
-    end: int
-    raw: str
-    kind: str  # "glyph" | "string" | "unknown"
-    lines: list[GlyphLine] = field(default_factory=list)
-
-    def decoded_lines(self) -> list[str]:
-        return [ln.text() for ln in self.lines]
-
-    def joined(self) -> str:
-        return " ".join(t for t in self.decoded_lines() if t.strip())
-
-    def is_empty(self) -> bool:
-        cleaned = re.sub(r"[\x00-\x1f]", "", self.joined()).strip()
-        return not cleaned
-
-    def font_defaults(self) -> tuple[str, str, str, str]:
-        for ln in self.lines:
-            for ch, font, size, weight in ln.glyphs:
-                if ch.strip():
-                    return ln.align, font, size, weight
-        return "Center", "Cambria", "20", "Regular"
-
-    def line_font(self, index: int) -> tuple[str, str, str, str]:
-        if 0 <= index < len(self.lines):
-            ln = self.lines[index]
-            for ch, font, size, weight in ln.glyphs:
-                if ch.strip():
-                    return ln.align, font, size, weight
-            if ln.align:
-                align, font, size, weight = self.font_defaults()
-                return ln.align, font, size, weight
-        return self.font_defaults()
-
-
-def _matching_brace(s: str, open_idx: int) -> int:
-    # Structural braces occupy their own lines. A literal brace glyph such
-    # as "{;Arial;20;Regular" must not change the nesting depth.
-    depth = 1
-    for match in re.finditer(r"(?m)^[ \t]*([{}])[ \t]*\r?$", s[open_idx + 1:]):
-        if match[1] == "{":
-            depth += 1
-        else:
-            depth -= 1
-            if depth == 0:
-                return open_idx + 1 + match.start(1)
-    return -1
-
-
-def find_text_blocks(upf: str) -> list[TextBlock]:
-    blocks: list[TextBlock] = []
-    for m in re.finditer(r"Object:TextDesignElement\s*\{", upf):
-        brace_open = upf.find("{", m.end() - 1)
-        brace_close = _matching_brace(upf, brace_open)
-        if brace_close < 0:
-            continue
-        raw = upf[m.start() : brace_close + 1]
-        if "List<TextLineDetails>" in raw:
-            kind, lines = "glyph", parse_glyph_lines(raw)
-        elif "List<string>" in raw:
-            kind, lines = "string", parse_string_lines(raw)
-        else:
-            kind, lines = "unknown", []
-        blocks.append(
-            TextBlock(start=m.start(), end=brace_close + 1, raw=raw, kind=kind, lines=lines)
-        )
-    return blocks
-
-
-def _detab_lead(line: str) -> str:
-    return re.sub(r"^\t+", "", line).rstrip("\t")
-
-
-def parse_glyph_lines(block: str) -> list[GlyphLine]:
-    m = re.search(r"List<TextLineDetails>:(\d+)\s*\{", block)
-    if not m:
-        return []
-    list_open = block.find("{", m.end() - 1)
-    list_close = _matching_brace(block, list_open)
-    body = block[list_open + 1 : list_close]
-    lines: list[GlyphLine] = []
-    for lm in re.finditer(r"(\d+)\s*\{", body):
-        inner_open = body.find("{", lm.end() - 1)
-        inner_close = _matching_brace(body, inner_open)
-        if inner_close < 0:
-            continue
-        inner = body[inner_open + 1 : inner_close]
-        align = "Center"
-        glyphs: list[tuple[str, str, str, str]] = []
-        saw_align = False
-        for row in inner.splitlines():
-            if not row.strip():
-                continue
-            detab = _detab_lead(row)
-            if not saw_align and detab in {"Center", "Left", "Right", "Justify"}:
-                align = detab
-                saw_align = True
-                continue
-            parts = detab.rsplit(";", 3)
-            if len(parts) < 4:
-                continue
-            ch, font, size, weight = parts[0], parts[1], parts[2], parts[3]
-            # Prägen stores a space as a one-character first field; never strip it.
-            if ch == "" and row.lstrip("\t")[:1] == " ":
-                ch = " "
-            glyphs.append((ch, font, size, weight))
-        lines.append(GlyphLine(align=align, glyphs=glyphs))
-    return lines
-
-
-def parse_string_lines(block: str) -> list[GlyphLine]:
-    m = re.search(r"List<string>:(\d+)\s*\{", block)
-    if not m:
-        return []
-    list_open = block.find("{", m.end() - 1)
-    list_close = _matching_brace(block, list_open)
-    body = block[list_open + 1 : list_close]
-    lines: list[GlyphLine] = []
-    for lm in re.finditer(r"(\d+)\s*\{", body):
-        inner_open = body.find("{", lm.end() - 1)
-        inner_close = _matching_brace(body, inner_open)
-        if inner_close < 0:
-            continue
-        inner = body[inner_open + 1 : inner_close]
-        plain = ""
-        for raw_line in inner.splitlines():
-            if raw_line.strip("\t") == "" and plain == "":
-                continue
-            plain = _detab_lead(raw_line)
-            break
-        lines.append(GlyphLine(align="Center", glyphs=[], plain=plain))
-    return lines
-
-
-def _list_indent(block: TextBlock) -> str:
-    m = re.search(r"List<(?:TextLineDetails|string)>:", block.raw)
-    if not m:
-        return "\t\t\t\t\t\t"
-    line_start = block.raw.rfind("\n", 0, m.start()) + 1
-    return block.raw[line_start : m.start()]
-
-
-def encode_glyph_line(
-    text: str, align: str, font: str, size: str, weight: str, indent: str
-) -> str:
-    # Native Prägen files keep Center + glyph rows unindented; only counts/braces are tabbed.
-    rows = [align] + [f"{ch};{font};{size};{weight}" for ch in text]
-    inner = "\n".join(rows)
-    return f"{indent}{len(text)}\n{indent}{{\n{inner}\n{indent}}}"
-
-
-def encode_string_line(text: str, indent: str) -> str:
-    return f"{indent}{len(text)}\n{indent}{{\n{text}\n{indent}}}"
-
-
-def replace_list(block: TextBlock, new_lines: list[str]) -> str:
-    indent = _list_indent(block)
-    inner_indent = indent + "\t"
-    # A newline/tab inside a field would be encoded as an empty glyph row and
-    # crash the Prägen parser ("index out of array range"). Flatten whitespace.
-    new_lines = [re.sub(r"\s+", " ", t) for t in new_lines]
-    if block.kind == "glyph":
-        tag = r"List<TextLineDetails>:(\d+)\s*\{"
-        pieces = []
-        for i, t in enumerate(new_lines):
-            align, font, size, weight = block.line_font(i)
-            pieces.append(encode_glyph_line(t, align, font, size, weight, inner_indent))
-        encoded = "\n".join(pieces)
-        header = f"List<TextLineDetails>:{len(new_lines)}"
-    elif block.kind == "string":
-        tag = r"List<string>:(\d+)\s*\{"
-        encoded = "\n".join(encode_string_line(t, inner_indent) for t in new_lines)
-        header = f"List<string>:{len(new_lines)}"
-    else:
-        raise ValueError("TextDesignElement has no supported text list")
-    m = re.search(tag, block.raw)
-    if not m:
-        raise ValueError("Could not find text list inside TextDesignElement")
-    list_open = block.raw.find("{", m.end() - 1)
-    list_close = _matching_brace(block.raw, list_open)
-    new_list = f"{header}\n{indent}{{\n{encoded}\n{indent}}}"
-    return block.raw[: m.start()] + new_list + block.raw[list_close + 1 :]
-
 
 def logo_block_indices(upf: str, blocks: list[TextBlock]) -> set[int]:
     """Blocks that sit inside a background field (PrintArea) holding the logo.
@@ -1706,11 +1466,7 @@ def fill_upf(template_text: str, fields: dict, cfg: dict) -> str:
         # Two roles landing on one field previously let the title silently
         # overwrite the degree text. Never allow that.
         if idx in updates:
-            LOG.warning(
-                "Role collision: %s and an earlier role both target UPF field %s — skipping %s",
-                role, idx, role,
-            )
-            return
+            raise ValueError(f"UPF role collision: {role} targets already-filled field {idx}")
         updates[idx] = lines
 
     if "degree" in roles:
@@ -1836,14 +1592,6 @@ def template_variants_for(
     return out
 
 
-FAIL_SYSTEM = """You write a short failure report for an operator who foil-stamps thesis covers.
-Plain text only, no markdown, 6–12 lines.
-Match the language of COVER_TEXT (German or English).
-Explain why no cover was produced (or why a variant is missing), what was found on pages 1–2, and what a human should check.
-Do not invent an author, university, title or year that is not in COVER_TEXT.
-"""
-
-
 def _fallback_fail_note(error: str, fields: dict) -> str:
     bits = [
         f"Kein Cover geschrieben: {error}",
@@ -1881,7 +1629,7 @@ def write_fail_report(
             p = Path(val)
             if p not in folders:
                 folders.append(p)
-    folders.append(_local_fail_dir())
+    folders.append(Path(cfg.get("local_fail_dir") or _local_fail_dir()))
     facts = {
         "pdf": str(pdf_path),
         "error": f"{type(error).__name__}: {error}",
@@ -2001,8 +1749,9 @@ def _log_timings(
     read: float, model: float, write: float, total: float, source: str, cfg: dict
 ) -> None:
     """One-line per-PDF stage timing so slow runs diagnose themselves."""
-    settle = cfg.get("_timings", {}).get("settle")
-    settle_txt = f"settle {settle:.1f}s, " if settle is not None else ""
+    timing = cfg.get("_timings", {})
+    settle_txt = ", ".join(f"{key} {timing[key]:.1f}s" for key in ("queue", "settle", "stage") if key in timing)
+    settle_txt = settle_txt + ", " if settle_txt else ""
     LOG.info(
         "timings: %sread %.1fs (source=%s), model %.1fs, write %.1fs, total %.1fs",
         settle_txt, read, source, model, write, total,
@@ -2017,15 +1766,19 @@ def _log_timings(
 def process_pdf(pdf_path: Path, cfg: dict) -> list[Path]:
     LOG.info("Processing %s", pdf_path)
     ctx: dict = {"text": "", "source": "", "fields": {}}
+    started = time.monotonic()
     try:
-        with staged_pdf(pdf_path) as (local_pdf, digest):
+        with job_lock(pdf_path, cfg), staged_pdf(pdf_path) as (local_pdf, digest):
             job = JobState(pdf_path, digest, cfg)
             if job.record["completed"]:
                 LOG.info("Already generated %s — retrying archival only", pdf_path.name)
                 return [Path(p) for p in job.record["outputs"]]
-            runtime = {**cfg, "_job": job, "_source_pdf": str(pdf_path)}
-            written = _process_pdf_inner(local_pdf, runtime, ctx)
+            runtime = {**cfg, "_job": job, "_source_pdf": str(pdf_path),
+                       "_timings": {**cfg.get("_timings", {}), "stage": time.monotonic() - started}}
+            with capture_inference():
+                written = _process_pdf_inner(local_pdf, runtime, ctx)
             job.complete(written)
+            LOG.info("Job wall time including staging/checkpoints: %.2fs", time.monotonic() - started)
             return written
     except (ModelUnavailable, RetryableJobError):
         # A backend outage is retryable; do not create repeated failure files.
@@ -2048,7 +1801,7 @@ def process_pdf(pdf_path: Path, cfg: dict) -> list[Path]:
             # report guarantees the operator always gets an error text.
             LOG.exception("Standard failure report failed for %s", pdf_path)
             try:
-                dest = _local_fail_dir() / (
+                dest = Path(cfg.get("local_fail_dir") or _local_fail_dir()) / (
                     f"{safe_stem(pdf_path.stem)}_{datetime.now().strftime('%Y%m%d-%H%M%S')}_FAIL.txt"
                 )
                 dest.parent.mkdir(parents=True, exist_ok=True)
@@ -2139,20 +1892,18 @@ def _prepare_pdf(pdf_path: Path, cfg: dict, ctx: dict) -> tuple[dict, str, float
             f"appears on {where}. Refusing to stamp a guessed foil - review the PDF."
         )
     if "no_university_on_cover" in fields.get("risks", []):
-        if _model_read_cover(fields.get("model_raw") or {}):
+        if fields.get("model_outcome", {}).get("status") == "ok" or _model_read_cover(fields.get("model_raw") or {}):
             if fields.get("ocr_escalated"):
                 raise RuntimeError(
                     "No awarding institution identified: the cover was read from its text "
-                    "layer and again with full-page OCR, and neither names a university we "
-                    "can match. A human must identify the institution (e.g. from the examiners "
-                    "or course of study) and add it to the cover, or stamp manually. Refusing "
+                    "layer and again with full-page OCR, and neither extraction identified "
+                    "a university we can match. Review the original cover and configuration, "
+                    "or stamp manually. Refusing "
                     "to stamp."
                 )
             raise RuntimeError(
-                "No awarding institution identified: the model read the cover normally "
-                "but it names no university, so none can be chosen. A human must identify "
-                "the institution (e.g. from the examiners or course of study) and add it "
-                "to the cover, or stamp manually. Refusing to stamp."
+                "No awarding institution identified in the extracted cover text. "
+                "Review the original cover, logo extraction, and configuration. Refusing to stamp."
             )
         raise RuntimeError(
             f"No awarding institution identified (model returned {fields['university_raw']!r}; "
@@ -2178,6 +1929,8 @@ def _prepare_pdf(pdf_path: Path, cfg: dict, ctx: dict) -> tuple[dict, str, float
             "template/templates entries in config.json."
         )
 
+    fields["inference_metrics"] = inference_metrics()
+    fields["job_timing"] = cfg.get("_timings", {})
     return fields, source, t_read, t_model
 
 
@@ -2195,6 +1948,9 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
         if job:
             job.prepared({"fields": fields, "source": source, "text": ctx["text"]})
 
+    if not can_stamp(fields):
+        raise RuntimeError("Validated fields are not safe to stamp: " + ", ".join(fields.get("risks", [])))
+
     templates_dir = Path(cfg["templates_dir"])
     uni_obj = next(
         (u for u in cfg.get("universities", []) if u.get("id") == fields["university_id"]),
@@ -2204,9 +1960,8 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
     if not variants:
         if not fields["university_template"]:
             raise RuntimeError(
-                f"Could not match a .upf template. Model said template={fields.get('template_model')!r} "
-                f"university={fields['university_raw']!r}. "
-                f"Cover-grounded files were: {fields.get('template_candidates') or []}."
+                f"No approved .upf file exists for institution {fields['university_raw']!r}. "
+                "Check its configured template filenames and the template share."
             )
         raise RuntimeError(f"Template not found: {templates_dir / fields['university_template']}")
     if not fields["university_template"]:
@@ -2358,8 +2113,10 @@ def move_aside(pdf_path: Path, dest_dir: Path) -> Path | None:
     try:
         return retry_io(lambda: shutil.move(str(pdf_path), str(target)), what=f"moving {pdf_path.name}")
     except FileNotFoundError:
-        LOG.info("Source vanished while moving %s — already handled elsewhere", pdf_path.name)
-        return None
+        if not pdf_path.exists():
+            LOG.info("Source vanished while moving %s — already handled elsewhere", pdf_path.name)
+            return None
+        raise
 
 
 _PROCESS_LOCK = threading.Lock()
@@ -2415,7 +2172,14 @@ def handle_pdf(pdf_path: Path, cfg: dict, origin: str, timings=None) -> bool:
         notify(cfg, "Cover wird bearbeitet", pdf_path.name, app="Thesis Cover – läuft")
         dest: str | None = None
         try:
+            initial = pdf_path.stat()
             process_pdf(pdf_path, cfg)
+            if not pdf_path.exists():
+                return True
+            current = pdf_path.stat()
+            if (initial.st_size, initial.st_mtime_ns) != (current.st_size, current.st_mtime_ns):
+                LOG.info("Source was replaced during processing; queueing its new contents")
+                return False
             dest = cfg.get("processed_dir")
         except (ModelUnavailable, RetryableJobError) as exc:
             LOG.warning("Deferring %s: %s", pdf_path.name, exc)
@@ -2609,14 +2373,17 @@ def main() -> int:
         return 1
     work.start()
     if args.scan_existing:
-        scan_existing(cfg, work)
+        try:
+            scan_existing(cfg, work)
+        except OSError:
+            LOG.exception("Initial scan interrupted; periodic rescan will retry")
     spawn_model_warmup(cfg)
     last_warm = time.monotonic()
     LOG.info("Watching %s  →  %s", cfg["watch_dir"], cfg["output_dir"])
     exit_code = 0
     try:
         interval = float(cfg.get("watch_rescan_interval") or 0)
-        last = time.time()
+        last = time.monotonic()
         backoff = 2.0
         while True:
             time.sleep(1)
@@ -2631,11 +2398,11 @@ def main() -> int:
                     break
                 observer = healed
                 backoff = min(backoff * 2, 60.0)
-                last = time.time()
+                last = time.monotonic()
                 continue
             backoff = 2.0
-            if interval and time.time() - last >= interval:
-                last = time.time()
+            if interval and time.monotonic() - last >= interval:
+                last = time.monotonic()
                 try:
                     scan_existing(cfg, work)
                 except Exception:

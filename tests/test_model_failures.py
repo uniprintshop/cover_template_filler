@@ -52,3 +52,19 @@ class ModelFailureTests(unittest.TestCase):
         for content, reason in (("", "stop"), ("partial", "length")):
             with self.subTest(reason=reason), self.assertRaises(model.InvalidModelResponse):
                 model.require_content(content, reason)
+
+    def test_warmup_accepts_its_deliberately_tiny_output_budget(self):
+        with patch.object(model.urllib.request, "urlopen") as opened:
+            opened.return_value.__enter__.return_value.read.return_value = (
+                b'{"message":{"content":""},"done_reason":"length"}')
+            self.assertEqual(w.call_ollama("test", "system", "warmup", "http://model", 1,
+                                           warmup_only=True), "")
+            with self.assertRaises(model.InvalidModelResponse):
+                w.call_ollama("test", "system", "extraction", "http://model", 1)
+
+    def test_catalog_precedes_changing_document_data(self):
+        with patch.object(w, "call_ollama", return_value='{"university":"test"}') as call:
+            w._model_fields("Cover", {}, {"model": {"backend": "ollama"}},
+                            [{"id": "test", "template": "Test.upf"}], {})
+        prompt = call.call_args.args[2]
+        self.assertLess(prompt.index("UNIVERSITIES"), prompt.index("METADATA"))

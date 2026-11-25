@@ -15,7 +15,7 @@ def normalize_config(data: dict, base: Path) -> dict:
             raise ValueError(f"{key} must be a non-empty directory path")
     cfg.setdefault("processed_dir", str(Path(cfg["watch_dir"]) / "processed"))
     cfg.setdefault("failed_dir", str(Path(cfg["watch_dir"]) / "failed"))
-    for key in ("watch_dir", "output_dir", "templates_dir", "processed_dir", "failed_dir", "state_dir"):
+    for key in ("watch_dir", "output_dir", "templates_dir", "processed_dir", "failed_dir", "state_dir", "local_fail_dir"):
         if key not in cfg:
             continue
         if not isinstance(cfg[key], str) or not cfg[key].strip():

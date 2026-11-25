@@ -19,7 +19,8 @@ class JobTests(unittest.TestCase):
                     "output_dir": str(self.root / "out")}
 
     def test_archive_failure_never_repeats_generation(self):
-        with patch.object(w, "_process_pdf_inner", return_value=[self.root / "cover.upf"]) as generate, \
+        with self.assertLogs(w.LOG, level="ERROR"), \
+                patch.object(w, "_process_pdf_inner", return_value=[self.root / "cover.upf"]) as generate, \
                 patch.object(w, "move_aside", side_effect=OSError("share offline")):
             w.handle_pdf(self.source, self.cfg, "test")
             w.handle_pdf(self.source, self.cfg, "test")
@@ -63,6 +64,21 @@ class JobTests(unittest.TestCase):
             self.assertEqual(local.read_bytes(), b"test source")
             self.assertEqual(len(digest), 64)
         self.assertFalse(local.exists())
+
+    def test_source_replacement_during_processing_is_not_archived(self):
+        def replace_source(*args):
+            self.source.write_bytes(b"different new PDF contents")
+            return []
+
+        with patch.object(w, "process_pdf", side_effect=replace_source), patch.object(w, "move_aside") as move:
+            self.assertFalse(w.handle_pdf(self.source, self.cfg, "test"))
+        move.assert_not_called()
+
+    def test_journal_lock_prevents_parallel_ownership(self):
+        with jobs.job_lock(self.source, self.cfg):
+            with self.assertRaises(jobs.RetryableJobError):
+                with jobs.job_lock(self.source, self.cfg):
+                    self.fail("Lock was acquired twice")
 
     def test_sidecar_retry_reuses_prepared_fields_and_existing_cover(self):
         template = "Westfälische_Hochschule_Gelsenkirchen.upf"
