@@ -92,12 +92,48 @@ class TemplateSelectionTests(unittest.TestCase):
             "Bachelorarbeit\n"
             "\n"
             "Vorgelegt von: Lena Hoffmann\n"
-            "2026\n"
+            "Wuppertal, 2026\n"
         )
         fields = watcher.extract_fields(cover, {}, self.config)
         self.assertIn("no_university_on_cover", fields["risks"])
         self.assertEqual(fields["university_id"], "")
         self.assertFalse(fields["ok_to_stamp"])
+        # Model down: the advice is to wait for the model, not to edit config.
+        self.assertTrue(any("unavailable" in n for n in fields["notes"]))
+
+    def test_cover_without_institution_is_reported_as_cover_problem(self):
+        # The model works (author/title/year are read) but the cover is a
+        # fill-in template that names no institution at all ("Hagen" is only
+        # the place of birth). The failure must be reported as "the cover does
+        # not name a university", not as "model unavailable", and must not
+        # promise that adding the school to config.json would fix it
+        # (Schachtsiek 2026 case).
+        cover = (
+            "Masterarbeit\n"
+            "Titel der Arbeit // Title of Thesis\n"
+            "Langformat im Kurzvideo-Zeitalter.\n"
+            "Autorennamen, Geburtsort // Name, Place of Birth\n"
+            "Tom Schachtsiek, Hagen\n"
+            "Studiengang // Course of Study\n"
+            "Digitaler Qualitätsjournalismus\n"
+            "Abgabedatum // Date of Submission\n"
+            "25.11.2026\n"
+        )
+        fields = self._fields_with_model(
+            cover,
+            {
+                "university": "",
+                "author": "Tom Schachtsiek, Hagen",
+                "title": "Langformat im Kurzvideo-Zeitalter.",
+                "degree_type": "master",
+                "year": "2026",
+            },
+        )
+        self.assertIn("no_university_on_cover", fields["risks"])
+        self.assertFalse(fields["ok_to_stamp"])
+        joined = " ".join(fields["notes"])
+        self.assertIn("does not name the awarding university", joined)
+        self.assertNotIn("unavailable", joined)
 
     def test_aachen_is_not_mistaken_for_birthplace(self):
         # "Wuppertal" appears only as a birthplace; the awarding institution on
@@ -263,6 +299,92 @@ class TemplateSelectionTests(unittest.TestCase):
         bare["template"] = None
         modified = [u for u in self.universities if u["id"] != "hspv-nrw"] + [bare]
         self.assertNotIn("hspv-nrw", watcher._university_catalog(modified))
+
+    # --- OCR escalation: institution only in a rendered banner ----------------
+
+    def test_lenient_matcher_accepts_scrambled_ocr_order(self):
+        # OCR reads a multi-line banner by lines, so an alias's words can lose
+        # their order ("Hochschule" drops after the cities). The strict
+        # contiguous-phrase matcher then misses it; the lenient matcher (all
+        # significant words clustered within one window) must not.
+        blob = "westfalische gelsenkirchen bocholt recklinghausen hochschule"
+        long_alias = "westfälische hochschule gelsenkirchen bocholt recklinghausen"
+        self.assertFalse(watcher._alias_in_blob(long_alias, blob))
+        self.assertTrue(watcher._alias_in_blob(long_alias, blob, lenient=True))
+        short_alias = "westfälische hochschule"
+        self.assertFalse(watcher._alias_in_blob(short_alias, blob))
+        self.assertTrue(watcher._alias_in_blob(short_alias, blob, lenient=True))
+
+    def test_lenient_matcher_still_rejects_scattered_words(self):
+        # The relaxation is bounded: words far apart in the cover are not one
+        # name, so a scattered alias must still be rejected even when lenient.
+        scattered = "westfalische " + ("x" * 500) + " hochschule"
+        self.assertFalse(watcher._alias_in_blob("westfälische hochschule", scattered, lenient=True))
+
+    def test_resolve_university_lenient_vs_strict(self):
+        # The foil is named after an abbreviation ("HSPV_NRW") the cover never
+        # prints; the cover instead spells the formal name, which OCR can read
+        # out of order. With no filename token present, the strict
+        # contiguous-phrase matcher has nothing to bite on and rejects, while
+        # the lenient matcher grounds the scrambled formal name.
+        cover = "Hochschule Nordrhein Westfalen für Polizei und öffentliche Verwaltung\n"
+        strict = watcher.resolve_university(
+            cover, "hspv-nrw", self.universities, self.directory, lenient=False
+        )
+        self.assertIn("university_not_on_cover", strict[1])
+        lenient = watcher.resolve_university(
+            cover, "hspv-nrw", self.universities, self.directory, lenient=True
+        )
+        self.assertEqual(lenient[0]["id"], "hspv-nrw")
+        self.assertNotIn("university_not_on_cover", lenient[1])
+
+    def test_ocr_rescue_recovers_banner_institution(self):
+        # The digital layer carried the typed fields but no institution; the
+        # full-page OCR second-read sees the banner and names the school. The
+        # banner's reading order is scrambled, so only lenient grounding confirms it.
+        digital = {
+            "university_id": "", "university_template": "", "university_raw": "",
+            "university_matches": [], "author": "Tom Schachtsiek", "title": "t",
+            "year": "2026", "degree_type": "master", "degree_text": "Master",
+            "candidates": {"authors": ["Tom Schachtsiek"], "years": ["2026"], "degree_guess": "master"},
+            "risks": ["no_university_on_cover"],
+            "notes": ["The model read the cover normally (author/title/year) but found no institution name on it."],
+            "ok_to_stamp": False,
+            "model_raw": {"author": "Tom Schachtsiek", "title": "t", "year": "2026"},
+        }
+        ocr = ("Westfälische Gelsenkirchen Bocholt Recklinghausen\nHochschule\n"
+                "University of Applied Sciences\nTom Schachtsiek\n2026\n")
+        with patch.object(watcher, "extract_ocr", return_value=ocr), \
+             patch.object(watcher, "_model_fields", return_value={"university": "westfälische-hochschule"}):
+            rescued, used = watcher._rescue_university_from_ocr(Path("dummy.pdf"), {}, self.config, digital)
+        self.assertTrue(used)
+        self.assertTrue(rescued["ocr_escalated"])
+        self.assertEqual(rescued["university_id"], "westfälische-hochschule")
+        self.assertNotIn("no_university_on_cover", rescued["risks"])
+        self.assertTrue(rescued["ok_to_stamp"])
+        self.assertTrue(any("recovered from a full-page OCR" in n for n in rescued["notes"]))
+
+    def test_ocr_rescue_still_fails_when_ocr_names_nothing(self):
+        digital = {
+            "university_id": "", "university_template": "", "university_raw": "",
+            "university_matches": [], "author": "Tom Schachtsiek", "year": "2026",
+            "candidates": {"authors": ["Tom Schachtsiek"], "years": ["2026"], "degree_guess": "master"},
+            "risks": ["no_university_on_cover"],
+            "notes": ["The model read the cover normally (author/title/year) but found no institution name on it."],
+            "ok_to_stamp": False,
+            "model_raw": {"author": "Tom Schachtsiek", "year": "2026"},
+        }
+        ocr = ("Masterarbeit\nTom Schachtsiek, Hagen\nStudiengang\n"
+                + ("filler text to clear the minimum length gate " * 3))
+        with patch.object(watcher, "extract_ocr", return_value=ocr), \
+             patch.object(watcher, "_model_fields", return_value={"university": "", "author": "Tom Schachtsiek", "year": "2026"}):
+            rescued, used = watcher._rescue_university_from_ocr(Path("dummy.pdf"), {}, self.config, digital)
+        self.assertTrue(used)
+        self.assertTrue(rescued["ocr_escalated"])
+        self.assertEqual(rescued["university_id"], "")
+        self.assertIn("no_university_on_cover", rescued["risks"])
+        self.assertFalse(rescued["ok_to_stamp"])
+        self.assertTrue(any("neither names an institution" in n for n in rescued["notes"]))
 
 
 if __name__ == "__main__":

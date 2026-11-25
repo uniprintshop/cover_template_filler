@@ -155,7 +155,9 @@ def extract_digital(pdf_path: Path, pages: int = 2) -> str:
     text = "\n\n".join(parts)
     images_note = extract_page_image_text(pdf_path, pages)
     if images_note:
-        text = (text.rstrip() + "\n\n" + images_note).strip()
+        # Keep banner evidence inside the model's bounded prompt window;
+        # appending after two pages can silently truncate the school name.
+        text = (images_note + "\n\n" + text.rstrip()).strip()
     return text
 
 
@@ -177,7 +179,8 @@ def extract_page_image_text(pdf_path: Path, pages: int = 2) -> str:
 
     Vector text extraction misses the university logo, which is often the
     only place naming the school. Re-rendering whole pages is slow and
-    fragile on network shares; embedded images are small and fast.
+    fragile on network shares. Bound embedded-image OCR work by downscaling
+    large images, rather than dropping banners stored as page-sized rasters.
     """
     if pytesseract is None:
         return ""
@@ -210,13 +213,21 @@ def extract_page_image_text(pdf_path: Path, pages: int = 2) -> str:
             except Exception:
                 continue
             w, h = pil.size
-            if w < 60 or h < 15 or w * h > 2_000_000:
+            if w < 60 or h < 15:
                 continue
+            # Preserve aspect ratio and never upscale small lettering. A
+            # 1600px longest edge retains banner text while bounding OCR cost.
+            pil.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
             try:
-                txt = pytesseract.image_to_string(pil, lang="eng", config="--psm 11") or ""
+                try:
+                    txt = pytesseract.image_to_string(pil, lang="deu+eng", config="--psm 11") or ""
+                except Exception as exc:
+                    if "tessdata" not in str(exc).lower():
+                        raise
+                    txt = pytesseract.image_to_string(pil, lang="eng", config="--psm 11") or ""
             except Exception:
                 continue
-            txt = " ".join(txt.split())
+            txt = "\n".join(" ".join(line.split()) for line in txt.splitlines() if line.strip())
             if len(txt.strip()) >= 3 and _logo_text_plausible(txt):
                 found.append(txt.strip())
     seen, out = set(), []
@@ -601,7 +612,47 @@ def author_hints(text: str, meta: dict | None = None) -> list[str]:
     return _unique_names(strong + weak)
 
 
-def _alias_in_blob(alias: str, blob: str) -> bool:
+# OCR reads a multi-line banner by lines, so an institution's words can end
+# up out of order ("Westfälische ... Hochschule", with the cities between them).
+# A contiguous phrase then never matches. On an OCR-derived cover we instead
+# accept the alias if all its significant words sit inside one small window of
+# the cover text (one name block) - close together but in any order. The window
+# keeps this from matching words scattered across two pages.
+_OCR_ALIAS_WINDOW = 400
+
+
+def _first_word_index(word: str, blob: str) -> int:
+    """Index of the first word-bounded occurrence of `word` in a normalized
+    blob (single spaces, no combining marks), or -1 if absent."""
+    i, n, L = 0, len(blob), len(word)
+    while True:
+        j = blob.find(word, i)
+        if j < 0:
+            return -1
+        if j > 0 and (blob[j - 1].isalnum() or blob[j - 1] in "äöüß"):
+            i = j + 1
+            continue
+        k = j + L
+        if k < n and (blob[k].isalnum() or blob[k] in "äöüß"):
+            i = j + 1
+            continue
+        return j
+
+
+def _ocr_alias_in_blob(words: list[str], blob: str) -> bool:
+    sig = [w for w in words if len(w) >= 4]
+    if not sig:
+        return False
+    if len(sig) == 1:
+        return _first_word_index(sig[0], blob) >= 0
+    idx = [_first_word_index(w, blob) for w in sig]
+    if any(i < 0 for i in idx):
+        return False
+    span = (max(idx) - min(idx)) + max(len(w) for w in sig)
+    return span <= _OCR_ALIAS_WINDOW
+
+
+def _alias_in_blob(alias: str, blob: str, lenient: bool = False) -> bool:
     a = norm(alias)
     if not a:
         return False
@@ -622,14 +673,24 @@ def _alias_in_blob(alias: str, blob: str) -> bool:
         # all spaces removed, as one contiguous run, to still count.
         compact_blob = re.sub(r"[\s,.;:()_\-–—/]+", "", blob)
         compact_a = "".join(words)
-        return compact_a in compact_blob
+        if compact_a in compact_blob:
+            return True
+        # OCR reading order can split a name so it is no longer contiguous;
+        # only on an OCR-derived cover do we relax to "all words clustered".
+        if lenient:
+            return _ocr_alias_in_blob(words, blob)
+        return False
     # Single long token: still require word boundaries so "technik" does
     # not match inside "automatisierungstechnik". Glued-text fallback for
     # long tokens: a city/school name like "wuppertal" may be embedded in
     # a glued compound ("...universitätwuppertal") with no space before it.
     if re.search(rf"(?:^|[^\wäöüß]){re.escape(a)}(?:$|[^\wäöüß])", blob) is not None:
         return True
-    return len(a) >= 7 and a in re.sub(r"\s+", "", blob)
+    if len(a) >= 7 and a in re.sub(r"\s+", "", blob):
+        return True
+    if lenient:
+        return _ocr_alias_in_blob(words, blob)
+    return False
 
 
 # Lines that name where someone lives or was born, not the awarding
@@ -681,6 +742,7 @@ def resolve_university(
     uni_id: str,
     universities: list[dict],
     templates_dir: Path | None,
+    lenient: bool = False,
 ) -> tuple[dict | None, list[str], list[dict]]:
     """Validate the model's institution pick against the cover.
 
@@ -690,6 +752,11 @@ def resolve_university(
     alias) appears on the cover (address/birth lines stripped). A pick with no
     such trace is rejected rather than stamped, so a misread never becomes a
     wrong foil.
+
+    `lenient` relaxes alias matching to tolerate OCR reading order (an alias
+    whose words are present but not a contiguous phrase). It is only ever used
+    on an OCR-derived cover, where word order is untrustworthy; the digital
+    text layer keeps the strict contiguous-phrase rule.
     """
     uni_id = (uni_id or "").strip()
     if not uni_id:
@@ -714,7 +781,7 @@ def resolve_university(
     for cand in candidates:
         if norm(cand) in seen:
             continue
-        if _alias_in_blob(cand, blob):
+        if _alias_in_blob(cand, blob, lenient=lenient):
             seen.add(norm(cand))
             grounded.append(cand)
     if not grounded:
@@ -1219,7 +1286,20 @@ def _model_fields(cover_text: str, meta: dict, cfg: dict, universities: list[dic
         return {}
 
 
-def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
+def _model_read_cover(model_fields: dict) -> bool:
+    """True if the model call clearly read the cover (it filled in a field that
+    must be copied from the cover text). Distinguishes "model/API unavailable"
+    (returns nothing) from "the model worked but the cover names no institution"
+    (fills author/title/year, leaves university empty) - the two need different
+    remediation advice, and only the first is a reprocess-and-retry situation.
+    """
+    return any(
+        str(model_fields.get(k) or "").strip()
+        for k in ("author", "title", "year")
+    )
+
+
+def extract_fields(cover_text: str, meta: dict, cfg: dict, lenient: bool = False) -> dict:
     # A birth year ("Geboren ... 1991") is not a publishing year, so year
     # candidates are drawn from the cover minus address/birthplace lines.
     years = years_in(cover_matching_blob(cover_text))
@@ -1232,6 +1312,10 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
 
     # The model is the identifier: one call extracts the text fields and the
     # awarding institution's config id. No alias or filename matching is used.
+    # lenient=True only changes how the model's institution pick is grounded
+    # against the cover (order-tolerant) - it is used when that cover text is
+    # an OCR render whose reading order cannot be trusted. Text fields are
+    # unaffected.
     model_fields = _model_fields(cover_text, meta, cfg, universities, candidates)
 
     hay = cover_text
@@ -1272,7 +1356,7 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
     # The model names the institution by id; the cover only grounds (or vetoes)
     # that pick. Which foil to stamp is decided purely from config below.
     uni_id = str(model_fields.get("university") or "").strip()
-    uni, ur, uni_matches = resolve_university(cover_text, uni_id, universities, templates_dir)
+    uni, ur, uni_matches = resolve_university(cover_text, uni_id, universities, templates_dir, lenient=lenient)
     risks.extend(ur)
 
     notes: list[str] = []
@@ -1291,10 +1375,20 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
             "which is not in config.json - add it there, then reprocess."
         )
     if "no_university_on_cover" in risks:
-        notes.append(
-            "The model did not identify an awarding institution (or the model/API "
-            "was unavailable). Add the school to config.json and reprocess."
-        )
+        if _model_read_cover(model_fields):
+            notes.append(
+                "The model read the cover normally (author/title/year) but found no "
+                "institution name on it - the cover does not name the awarding "
+                "university. A human must identify it (e.g. from the examiners or the "
+                "course of study) and add it to the cover, or stamp it manually. Adding "
+                "the school to config.json will not help: the model reads the institution "
+                "from the cover text."
+            )
+        else:
+            notes.append(
+                "The model did not identify an awarding institution (the model/API "
+                "may be unavailable). Reprocess once the model is reachable."
+            )
 
     labels = cfg.get("degree_labels", {})
     # The cover is ground truth. The model can latch onto a stray mention
@@ -1345,6 +1439,106 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict) -> dict:
         "ok_to_stamp": ok_to_stamp,
         "model_raw": model_fields,
     }
+
+
+# Notes that describe the institution outcome; the OCR second-read replaces
+# them, so a stale digital-pass message never sits next to a newer one.
+_INST_NOTE_PREFIXES = (
+    "The model identified ",
+    "The model returned institution id ",
+    "The model read the cover normally",
+    "The model did not identify an awarding institution",
+)
+
+
+def _institution_unresolved(risks: list[str]) -> bool:
+    """True when the model's institution pick is not grounded on the cover: it
+    named none, named one not in the catalog, or named one with no matching
+    trace. These are exactly the cases a second OCR read can still rescue (a
+    name that only a rendered banner/logo carries, not the text layer)."""
+    return any(
+        r in ("no_university_on_cover", "university_not_on_cover")
+        or r.startswith("university_id_not_in_catalog:")
+        for r in risks
+    )
+
+
+def _rescue_university_from_ocr(pdf_path: Path, meta: dict, cfg: dict, fields: dict) -> tuple[dict, bool]:
+    """Second chance: read the institution from a full-page OCR render.
+
+    The digital text layer carries the typed cover fields but often not the
+    school name - that is frequently a raster banner/logo the text layer cannot
+    carry. When the digital read therefore yields no grounded institution, this
+    renders the cover, asks the model to name the institution from THAT text,
+    and grounds the pick with the order-tolerant matcher. Only the institution
+    is re-read; the trusted digital author/title/year in `fields` are kept.
+
+    Returns (fields, used_ocr); used_ocr is True once the OCR model read was
+    attempted, so the caller can tell "cover names no institution in any form
+    we can read" from "the model was down".
+    """
+    universities = cfg.get("universities", [])
+    templates_dir = Path(cfg["templates_dir"]) if cfg.get("templates_dir") else None
+    try:
+        ocr_text = compact_cover(
+            extract_ocr(
+                pdf_path,
+                2,
+                int(cfg.get("ocr_dpi", 300)),
+                cfg.get("ocr_lang", "deu+eng"),
+            )
+        )
+    except Exception as exc:
+        LOG.warning("OCR second-read unavailable (%s) - no rescue possible", exc)
+        return fields, False
+    if len(ocr_text.strip()) < int(cfg.get("ocr_min_chars", 80)):
+        LOG.info("OCR second-read produced no usable text - no rescue possible")
+        return fields, False
+    ocr_fields = _model_fields(ocr_text, meta, cfg, universities, fields.get("candidates") or {})
+    ocr_uni_id = str(ocr_fields.get("university") or "").strip()
+    LOG.info("OCR second-read: model picked %r from the rendered cover", ocr_uni_id)
+    uni, ur, uni_matches = resolve_university(ocr_text, ocr_uni_id, universities, templates_dir, lenient=True)
+
+    fields["risks"] = [
+        r for r in fields.get("risks", [])
+        if not (r in ("no_university_on_cover", "university_not_on_cover")
+                or r.startswith("university_id_not_in_catalog:"))
+    ]
+    fields["risks"].extend(ur)
+    fields["university_raw"] = ocr_uni_id or fields.get("university_raw", "")
+    fields["ocr_escalated"] = True
+    fields["notes"] = [n for n in fields.get("notes", []) if not n.startswith(_INST_NOTE_PREFIXES)]
+
+    if uni is not None and not ur:
+        fields["university_id"] = uni["id"]
+        fields["university_matches"] = uni_matches
+        fields["notes"].append(
+            "The awarding institution is not in the PDF's text layer (it is a "
+            "banner/logo). It was recovered from a full-page OCR of the cover and "
+            "confirmed against the school's configured name."
+        )
+    elif ocr_uni_id:
+        fields["notes"].append(
+            "The cover was read from its text layer and again by full-page OCR; the "
+            f"OCR read named '{ocr_uni_id}', which could not be confirmed on the "
+            "cover, so nothing was stamped."
+        )
+    else:
+        fields["notes"].append(
+            "The cover was read from its text layer and again by full-page OCR; "
+            "neither names an institution we can match, so none was stamped."
+        )
+    blocking = any(
+        r == "multiple_years_unresolved"
+        or r == "author_looks_like_supervisor"
+        or r == "no_university_on_cover"
+        or r == "university_not_on_cover"
+        or r.startswith("university_id_not_in_catalog")
+        or r == "no_template_for_university"
+        for r in fields["risks"]
+    )
+    fields["ok_to_stamp"] = (not blocking) and bool(uni) and bool(fields.get("author")) and bool(fields.get("year"))
+    return fields, True
 
 
 # ---------------------------------------------------------------------------
@@ -2039,12 +2233,34 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
 
     meta = pdf_metadata(pdf_path)
     t0 = time.monotonic()
-    fields = extract_fields(text, meta, cfg)
+    # The cover text is the digital layer unless it was too short (then
+    # get_cover_text already OCR'd it). An OCR-derived cover has untrustworthy
+    # word order, so the institution is grounded order-tolerantly; the digital
+    # layer keeps the strict contiguous-phrase rule.
+    fields = extract_fields(text, meta, cfg, lenient=(source == "ocr"))
     t_model = time.monotonic() - t0
     ctx["fields"] = fields
     LOG.info("Resolved fields: %s", {k: v for k, v in fields.items() if k not in {"candidates", "model_raw"}})
     if fields.get("risks"):
         LOG.warning("Risks: %s  ok_to_stamp=%s", fields["risks"], fields.get("ok_to_stamp"))
+
+    # The digital layer can carry the typed fields (author/title/year) yet name
+    # no institution - the school name often lives only in a raster banner the
+    # text layer cannot hold. Then take one second chance: read the institution
+    # from a full-page OCR of the cover. The typed fields stay the trusted
+    # digital ones; only the institution is re-read and grounded leniently.
+    if source == "digital" and _institution_unresolved(fields.get("risks", [])):
+        LOG.info("No institution in the digital layer - escalating to a full-page OCR read")
+        t_ocr0 = time.monotonic()
+        fields, ocr_tried = _rescue_university_from_ocr(pdf_path, meta, cfg, fields)
+        t_model += time.monotonic() - t_ocr0
+        ctx["fields"] = fields
+        if ocr_tried:
+            source = "digital+ocr"
+            ctx["source"] = source
+            LOG.info("Cover text source now=%s", source)
+            if fields.get("risks"):
+                LOG.warning("Risks after OCR: %s  ok_to_stamp=%s", fields["risks"], fields.get("ok_to_stamp"))
 
     unknown_id = next(
         (r for r in fields.get("risks", []) if r.startswith("university_id_not_in_catalog:")), None
@@ -2055,14 +2271,30 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
             "Add that institution (id + template) to config.json, then reprocess. Refusing to stamp."
         )
     if "university_not_on_cover" in fields.get("risks", []):
+        where = "the rendered cover (full-page OCR)" if fields.get("ocr_escalated") else "the cover"
         raise RuntimeError(
-            f"Model identified '{fields['university_raw']}' but no part of that school's foil "
-            "filename appears on the cover. Refusing to stamp a guessed foil - review the PDF."
+            f"Model identified '{fields['university_raw']}' but no part of that school's name "
+            f"appears on {where}. Refusing to stamp a guessed foil - review the PDF."
         )
     if "no_university_on_cover" in fields.get("risks", []):
+        if _model_read_cover(fields.get("model_raw") or {}):
+            if fields.get("ocr_escalated"):
+                raise RuntimeError(
+                    "No awarding institution identified: the cover was read from its text "
+                    "layer and again with full-page OCR, and neither names a university we "
+                    "can match. A human must identify the institution (e.g. from the examiners "
+                    "or course of study) and add it to the cover, or stamp manually. Refusing "
+                    "to stamp."
+                )
+            raise RuntimeError(
+                "No awarding institution identified: the model read the cover normally "
+                "but it names no university, so none can be chosen. A human must identify "
+                "the institution (e.g. from the examiners or course of study) and add it "
+                "to the cover, or stamp manually. Refusing to stamp."
+            )
         raise RuntimeError(
             f"No awarding institution identified (model returned {fields['university_raw']!r}; "
-            "the model/API may be unavailable). Add the school to config.json and reprocess. Refusing to stamp."
+            "the model/API may be unavailable). Reprocess once the model is reachable."
         )
     if "author_looks_like_supervisor" in fields.get("risks", []):
         raise RuntimeError(
