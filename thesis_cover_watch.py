@@ -11,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import re
@@ -1522,7 +1523,12 @@ def fill_upf(template_text: str, fields: dict, cfg: dict) -> str:
 
 def safe_stem(name: str) -> str:
     name = re.sub(r"[^\w\-]+", "_", name, flags=re.U)
-    return name.strip("_") or "cover"
+    name = name.strip("_") or "cover"
+    encoded = name.encode("utf-8")
+    if len(encoded) > 64:
+        suffix = hashlib.sha256(encoded).hexdigest()[:8]
+        name = encoded[:55].decode("utf-8", errors="ignore").rstrip("_") + "_" + suffix
+    return name
 
 
 TITLE_NAME_RE = re.compile(r"(?i)(titel|title)")

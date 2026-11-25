@@ -45,6 +45,12 @@ class ValidationTests(unittest.TestCase):
         set_institution_notes(fields, ["Recovered by OCR"])
         self.assertEqual(fields["notes"], ["Title omitted", "Recovered by OCR"])
 
+    def test_long_unicode_names_leave_room_for_variant_suffixes(self):
+        first = w.safe_stem("Ä" * 100)
+        second = w.safe_stem("Ä" * 99 + "Ö")
+        self.assertLessEqual(len(first.encode("utf-8")), 64)
+        self.assertNotEqual(first, second)
+
     def test_all_repository_templates_roundtrip_author_and_year(self):
         root = Path(__file__).resolve().parents[1]
         cfg = w.load_config(root / "config.example.json")
