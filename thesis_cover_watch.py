@@ -31,6 +31,10 @@ from cover_model import (
     request_json, require_content,
 )
 from cover_jobs import JobState, RetryableJobError, atomic_write, staged_pdf
+from cover_extract import (
+    CoverEvidence, compact_cover, extract_digital, extract_ocr,
+    extract_page_image_text, get_cover_text, pdf_metadata,
+)
 
 try:
     import pdfplumber
@@ -142,191 +146,6 @@ def wait_until_stable(path: Path, settle: float) -> bool:
 # ---------------------------------------------------------------------------
 # PDF text
 # ---------------------------------------------------------------------------
-
-def extract_digital(pdf_path: Path, pages: int = 2) -> str:
-    parts: list[str] = []
-    if pdfplumber is not None:
-        with pdfplumber.open(str(pdf_path)) as pdf:
-            if not pdf.pages:
-                raise RuntimeError(f"PDF has no pages: {pdf_path}")
-            for page in pdf.pages[:pages]:
-                t = page.extract_text() or ""
-                if len(t.strip()) < 40:
-                    t = page.extract_text(layout=True) or t
-                parts.append(t or "")
-    elif PdfReader is not None:
-        reader = PdfReader(str(pdf_path))
-        if not reader.pages:
-            raise RuntimeError(f"PDF has no pages: {pdf_path}")
-        for page in reader.pages[:pages]:
-            parts.append(page.extract_text() or "")
-    else:
-        raise RuntimeError("Install pdfplumber or pypdf")
-    text = "\n\n".join(parts)
-    images_note = extract_page_image_text(pdf_path, pages)
-    if images_note:
-        # Keep banner evidence inside the model's bounded prompt window;
-        # appending after two pages can silently truncate the school name.
-        text = (images_note + "\n\n" + text.rstrip()).strip()
-    return text
-
-
-def _logo_text_plausible(txt: str) -> bool:
-    """Reject OCR garbage (single letters, symbols) from tiny logo images."""
-    letters = [ch for ch in txt if ch.isalpha()]
-    if len(letters) < 4:
-        return False
-    if len(txt) > 0 and len(letters) / len(txt) < 0.5:
-        return False
-    words = [w for w in re.split(r"\s+", txt) if w]
-    if not any(sum(1 for c in w if c.isalpha()) >= 4 for w in words):
-        return False
-    return True
-
-
-def extract_page_image_text(pdf_path: Path, pages: int = 2) -> str:
-    """OCR embedded raster images (logos) on the first pages.
-
-    Vector text extraction misses the university logo, which is often the
-    only place naming the school. Re-rendering whole pages is slow and
-    fragile on network shares. Bound embedded-image OCR work by downscaling
-    large images, rather than dropping banners stored as page-sized rasters.
-    """
-    if pytesseract is None:
-        return ""
-    if PdfReader is None:
-        return ""
-    try:
-        from PIL import Image
-    except ImportError:
-        return ""
-    try:
-        reader = PdfReader(str(pdf_path))
-    except Exception:
-        return ""
-    found: list[str] = []
-    for page in reader.pages[:pages]:
-        try:
-            images = list(page.images)
-        except Exception:
-            continue
-        for img in images:
-            try:
-                data = img.data
-            except Exception:
-                continue
-            if len(data) < 2000:
-                continue
-            try:
-                import io
-                pil = Image.open(io.BytesIO(data))
-            except Exception:
-                continue
-            w, h = pil.size
-            if w < 60 or h < 15:
-                continue
-            # Preserve aspect ratio and never upscale small lettering. A
-            # 1600px longest edge retains banner text while bounding OCR cost.
-            pil.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
-            try:
-                try:
-                    txt = pytesseract.image_to_string(pil, lang="deu+eng", config="--psm 11") or ""
-                except Exception as exc:
-                    if "tessdata" not in str(exc).lower():
-                        raise
-                    txt = pytesseract.image_to_string(pil, lang="eng", config="--psm 11") or ""
-            except Exception:
-                continue
-            txt = "\n".join(" ".join(line.split()) for line in txt.splitlines() if line.strip())
-            if len(txt.strip()) >= 3 and _logo_text_plausible(txt):
-                found.append(txt.strip())
-    seen, out = set(), []
-    for f in found:
-        if f.lower() not in seen:
-            seen.add(f.lower())
-            out.append(f)
-    return "\n".join(out)
-
-
-def extract_ocr(pdf_path: Path, pages: int, dpi: int, lang: str) -> str:
-    if convert_from_path is None or pytesseract is None:
-        raise RuntimeError("OCR requested but pdf2image/pytesseract not installed")
-    try:
-        images = convert_from_path(
-            str(pdf_path),
-            dpi=dpi,
-            first_page=1,
-            last_page=pages,
-        )
-    except Exception as exc:
-        raise RuntimeError(f"Could not rasterize {pdf_path} for OCR ({exc})") from exc
-    texts: list[str] = []
-    for img in images:
-        try:
-            texts.append(pytesseract.image_to_string(img, lang=lang) or "")
-        except Exception as exc:
-            if lang != "eng" and "tessdata" in str(exc).lower():
-                texts.append(pytesseract.image_to_string(img, lang="eng") or "")
-            else:
-                raise RuntimeError(
-                    f"Tesseract failed on {pdf_path} ({exc}). "
-                    "Install tesseract-data-deu tesseract-data-eng."
-                ) from exc
-    return "\n\n".join(texts)
-
-
-def compact_cover(text: str) -> str:
-    """Collapse layout-extraction padding so aliases, names and the model window stay usable."""
-    lines = []
-    for line in text.splitlines():
-        line = re.sub(r"[ \t]+", " ", line).strip()
-        if line:
-            lines.append(line)
-        elif lines and lines[-1] != "":
-            lines.append("")
-    return "\n".join(lines).strip()
-
-
-def get_cover_text(pdf_path: Path, cfg: dict) -> tuple[str, str]:
-    if not pdf_path.is_file():
-        raise FileNotFoundError(f"PDF not found: {pdf_path}")
-    digital = compact_cover(extract_digital(pdf_path, 2))
-    if len(digital.strip()) >= int(cfg.get("ocr_min_chars", 80)):
-        return digital, "digital"
-    LOG.info("Digital text too short (%s chars) — running OCR", len(digital.strip()))
-    ocr = compact_cover(
-        extract_ocr(
-            pdf_path,
-            pages=2,
-            dpi=int(cfg.get("ocr_dpi", 300)),
-            lang=cfg.get("ocr_lang", "deu+eng"),
-        )
-    )
-    return ocr, "ocr"
-
-
-def pdf_metadata(pdf_path: Path) -> dict:
-    if PdfReader is None:
-        return {}
-    info = PdfReader(str(pdf_path)).metadata
-    if not info:
-        return {}
-    author = getattr(info, "author", None)
-    title = getattr(info, "title", None)
-    created = str(getattr(info, "creation_date", "") or "")
-    out = {
-        "author": author,
-        "title": title,
-        "created": created,
-    }
-    # Word/LibreOffice embeds a usable author + creation year in metadata.
-    # It is only trusted when the author string also appears verbatim on the
-    # cover (same person named in the PDF) — never as a standalone source.
-    meta_years = sorted(set(YEAR_RE.findall(created)))
-    if meta_years:
-        out["meta_years"] = meta_years
-    return out
-
 
 # ---------------------------------------------------------------------------
 # heuristic candidates (model must copy from these / cover text)
@@ -764,6 +583,7 @@ def resolve_university(
     universities: list[dict],
     templates_dir: Path | None,
     lenient: bool = False,
+    evidence: CoverEvidence | None = None,
 ) -> tuple[dict | None, list[str], list[dict]]:
     """Validate the model's institution pick against the cover.
 
@@ -802,7 +622,12 @@ def resolve_university(
     for cand in candidates:
         if norm(cand) in seen:
             continue
-        if _alias_in_blob(cand, blob, lenient=lenient):
+        matched = (
+            any(_alias_in_blob(cand, norm(cover_matching_blob(block.text)),
+                               lenient=block.source != "digital") for block in evidence.blocks)
+            if evidence else _alias_in_blob(cand, blob, lenient=lenient)
+        )
+        if matched:
             seen.add(norm(cand))
             grounded.append(cand)
     if not grounded:
@@ -1259,7 +1084,7 @@ def _model_fields(cover_text: str, meta: dict, cfg: dict, universities: list[dic
         "METADATA is untrusted; copy only from COVER_TEXT.\n"
         f"METADATA: {json.dumps(meta, ensure_ascii=False)}\n"
         f"CANDIDATES: {json.dumps(candidates, ensure_ascii=False)}\n"
-        f"COVER_TEXT:\n{cover_text_for_model(cover_text)}\n"
+        f"COVER_TEXT:\n{cover_text_for_model(cfg['_evidence'].prompt() if cfg.get('_evidence') else cover_text)}\n"
     )
     try:
         if backend == "ollama":
@@ -1376,7 +1201,8 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict, lenient: bool = False
     # The model names the institution by id; the cover only grounds (or vetoes)
     # that pick. Which foil to stamp is decided purely from config below.
     uni_id = str(model_fields.get("university") or "").strip()
-    uni, ur, uni_matches = resolve_university(cover_text, uni_id, universities, templates_dir, lenient=lenient)
+    uni, ur, uni_matches = resolve_university(cover_text, uni_id, universities, templates_dir,
+                                             lenient=lenient, evidence=cfg.get("_evidence"))
     risks.extend(ur)
 
     notes: list[str] = []
@@ -1502,6 +1328,7 @@ def _rescue_university_from_ocr(pdf_path: Path, meta: dict, cfg: dict, fields: d
     """
     universities = cfg.get("universities", [])
     templates_dir = Path(cfg["templates_dir"]) if cfg.get("templates_dir") else None
+    ocr_started = time.monotonic()
     try:
         ocr_text = compact_cover(
             extract_ocr(
@@ -1509,6 +1336,7 @@ def _rescue_university_from_ocr(pdf_path: Path, meta: dict, cfg: dict, fields: d
                 2,
                 int(cfg.get("ocr_dpi", 300)),
                 cfg.get("ocr_lang", "deu+eng"),
+                cfg,
             )
         )
     except Exception as exc:
@@ -1517,8 +1345,10 @@ def _rescue_university_from_ocr(pdf_path: Path, meta: dict, cfg: dict, fields: d
     if len(ocr_text.strip()) < int(cfg.get("ocr_min_chars", 80)):
         LOG.info("OCR second-read produced no usable text - no rescue possible")
         return fields, False
+    fields.setdefault("extraction_timings", {})["rescue_ocr_seconds"] = time.monotonic() - ocr_started
     try:
-        ocr_fields = _model_fields(ocr_text, meta, cfg, universities, fields.get("candidates") or {})
+        ocr_cfg = {k: v for k, v in cfg.items() if k != "_evidence"}
+        ocr_fields = _model_fields(ocr_text, meta, ocr_cfg, universities, fields.get("candidates") or {})
     except ModelError as exc:
         status = "unavailable" if isinstance(exc, ModelUnavailable) else "invalid_response"
         fields["model_outcome"] = asdict(ModelOutcome(status, str(exc)))
@@ -2234,20 +2064,27 @@ def process_pdf(pdf_path: Path, cfg: dict) -> list[Path]:
 
 def _prepare_pdf(pdf_path: Path, cfg: dict, ctx: dict) -> tuple[dict, str, float, float]:
     t0 = time.monotonic()
-    text, source = get_cover_text(pdf_path, cfg)
+    extraction = get_cover_text(pdf_path, cfg)
+    text, source = extraction
+    if isinstance(extraction, CoverEvidence):
+        cfg = {**cfg, "_evidence": extraction}
+        ctx["extraction"] = {"blocks": [asdict(b) for b in extraction.blocks], "timings": extraction.timings}
     t_read = time.monotonic() - t0
     ctx["text"], ctx["source"] = text, source
     LOG.info("Cover text source=%s chars=%s", source, len(text))
     if not text.strip():
         raise RuntimeError("No text from first two pages (digital + OCR empty)")
 
-    meta = pdf_metadata(pdf_path)
+    meta = extraction.metadata if isinstance(extraction, CoverEvidence) else pdf_metadata(pdf_path)
     t0 = time.monotonic()
     # The cover text is the digital layer unless it was too short (then
     # get_cover_text already OCR'd it). An OCR-derived cover has untrustworthy
     # word order, so the institution is grounded order-tolerantly; the digital
     # layer keeps the strict contiguous-phrase rule.
     fields = extract_fields(text, meta, cfg, lenient=(source == "ocr"))
+    if isinstance(extraction, CoverEvidence):
+        fields["extraction_timings"] = dict(extraction.timings)
+        fields["extraction_sources"] = [{"page": b.page, "source": b.source} for b in extraction.blocks]
     t_model = time.monotonic() - t0
     ctx["fields"] = fields
     LOG.info("Resolved fields: %s", {k: v for k, v in fields.items() if k not in {"candidates", "model_raw"}})
@@ -2264,11 +2101,13 @@ def _prepare_pdf(pdf_path: Path, cfg: dict, ctx: dict) -> tuple[dict, str, float
     # text layer cannot hold. Then take one second chance: read the institution
     # from a full-page OCR of the cover. The typed fields stay the trusted
     # digital ones; only the institution is re-read and grounded leniently.
-    if source == "digital" and _institution_unresolved(fields.get("risks", [])):
+    if source.startswith("digital") and _institution_unresolved(fields.get("risks", [])):
         LOG.info("No institution in the digital layer - escalating to a full-page OCR read")
         t_ocr0 = time.monotonic()
         fields, ocr_tried = _rescue_university_from_ocr(pdf_path, meta, cfg, fields)
-        t_model += time.monotonic() - t_ocr0
+        ocr_seconds = fields.get("extraction_timings", {}).get("rescue_ocr_seconds", 0)
+        t_model += time.monotonic() - t_ocr0 - ocr_seconds
+        t_read += ocr_seconds
         ctx["fields"] = fields
         if ocr_tried:
             source = "digital+ocr"

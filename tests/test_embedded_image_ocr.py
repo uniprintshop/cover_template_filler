@@ -9,14 +9,15 @@ from unittest.mock import patch
 from PIL import Image
 
 import thesis_cover_watch as watcher
+import cover_extract as extraction
 
 
 class EmbeddedImageOcrTests(unittest.TestCase):
     def test_banner_survives_model_prompt_trimming(self):
         page = SimpleNamespace(extract_text=lambda: "Cover fields and abstract " * 200)
         pdf = SimpleNamespace(pages=[page])
-        with patch.object(watcher.pdfplumber, "open") as opened, \
-                patch.object(watcher, "extract_page_image_text",
+        with patch.object(extraction.pdfplumber, "open") as opened, \
+                patch.object(extraction, "extract_page_image_text",
                              return_value="Westfalische Hochschule Gelsenkirchen"):
             opened.return_value.__enter__.return_value = pdf
             text = watcher.extract_digital(Path("cover.pdf"))
@@ -36,8 +37,8 @@ class EmbeddedImageOcrTests(unittest.TestCase):
             observed.append(image.size)
             return "Westfalische Hochschule Gelsenkirchen"
 
-        with patch.object(watcher, "PdfReader", return_value=reader), \
-                patch.object(watcher.pytesseract, "image_to_string", side_effect=ocr):
+        with patch.object(extraction, "PdfReader", return_value=reader), \
+                patch.object(extraction.pytesseract, "image_to_string", side_effect=ocr):
             text = watcher.extract_page_image_text(Path("cover.pdf"), 2)
         return text, observed
 
