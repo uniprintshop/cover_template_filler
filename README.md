@@ -223,13 +223,14 @@ Small-model comparison (six mixed cases, one round each; see
 
 | Model | Correct | Median | Notes |
 |---|---:|---:|---|
-| `ornith-1.5:9b` | 6/6 | 16.6s | Only tested model handling the full workload |
+| `ornith-1.5:9b` | 6/6 | 16.6s | Handles the full workload |
+| `mimo-v2.6:9b` | 6/6 | 16.4s | Handles the full workload; tightest latency spread |
 | `lfm2.5:8b` | 1/6 | 11.4s | Fast but refuses nearly everything |
 | `bonsai-2:4b` | 1/6 | 28.9s | Slowest; published wrong fields (dangerous) |
 | `lfm3:1.7b` | 2/6 | 7.4s | Fastest; frequent wrong refusals |
 
 The validation guards prevented every wrong-foil stamp on all models.
-`ornith-1.5:9b` is the recommended model.
+`ornith-1.5:9b` and `mimo-v2.6:9b` are the recommended models.
 
 ## Code and dependencies
 
