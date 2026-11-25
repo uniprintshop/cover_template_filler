@@ -22,9 +22,14 @@ import time
 import unicodedata
 import urllib.error
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+
+from cover_model import (
+    InvalidModelResponse, ModelError, ModelOutcome, ModelUnavailable,
+    request_json, require_content,
+)
 
 try:
     import pdfplumber
@@ -934,7 +939,7 @@ SYSTEM = """You extract thesis cover fields from COVER_TEXT.
 Reply with ONLY a JSON object, no markdown:
 {"university":"","author":"","title":"","degree_phrase":"","degree_type":"bachelor|master|dissertation|unknown","year":""}
 Rules:
-- author, title, university, year, degree_phrase MUST be copied character-for-character from COVER_TEXT. Never from METADATA.
+- author, title, year, degree_phrase MUST be copied character-for-character from COVER_TEXT. Never from METADATA.
 - "university" is the id of the awarding institution, chosen from the UNIVERSITIES list in the message (the letterhead / body that issued the thesis). Output exactly that id - do NOT copy a written name. If several bodies appear, use the one that awarded the work. If none is clearly identifiable, use "".
 - The author is the candidate who submitted the work. Do not use Erstgutachter, Zweitgutachter, Betreuer, or supervisor names.
 - The author line may stand alone with no "vorgelegt von" / "written by". Still copy that name exactly.
@@ -1004,14 +1009,11 @@ def call_ollama(
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Ollama not reachable at {host} ({exc.reason})") from exc
-    except TimeoutError as exc:
-        raise RuntimeError(f"Ollama timed out after {timeout}s ({model})") from exc
-    return body.get("message", {}).get("content", "") or body.get("error", "")
+    body = request_json(req, timeout)
+    message = body.get("message") or {}
+    if not isinstance(message, dict):
+        raise InvalidModelResponse("Ollama response has no message object")
+    return require_content(message.get("content"), body.get("done_reason"), message.get("thinking"))
 
 
 _MODEL_REWARM_S = 12 * 3600
@@ -1033,7 +1035,7 @@ def warmup_model(cfg: dict) -> None:
         call_ollama(
             mcfg.get("name", "qwen3:8b"),
             SYSTEM,
-            "CANDIDATES: {}\nCOVER_TEXT:\nWarmup",
+            f'UNIVERSITIES (choose exactly one id - the awarding institution - or ""):\n{_university_catalog(cfg.get("universities", []))}\nCOVER_TEXT:\nWarmup',
             mcfg.get("host", "http://[IP_ADDRESS]:11434"),
             min(int(mcfg.get("timeout", 180)), 90),
             think=model_think_value(mcfg),
@@ -1100,22 +1102,13 @@ def call_openai(
         headers=headers,
         method="POST",
     )
+    body = request_json(req, timeout)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"OpenAI-compatible endpoint not reachable at {base} ({exc.reason})") from exc
-    except TimeoutError as exc:
-        raise RuntimeError(f"OpenAI-compatible endpoint timed out after {timeout}s ({model})") from exc
-    choice = body["choices"][0]["message"]
-    content = choice.get("content")
-    if content is None:
-        # e.g. the reasoning trace consumed the whole max_tokens budget.
-        raise RuntimeError(
-            f"model {model} returned an empty answer "
-            f"(reasoning_len={len(choice.get('reasoning_content') or '')})"
-        )
-    return content
+        choice = body["choices"][0]
+        message = choice["message"]
+        return require_content(message.get("content"), choice.get("finish_reason"), message.get("reasoning_content"))
+    except (KeyError, IndexError, TypeError, AttributeError) as exc:
+        raise InvalidModelResponse("OpenAI response has no valid completion") from exc
 
 
 def cover_text_for_model(text: str, max_chars: int = 2400) -> str:
@@ -1259,13 +1252,12 @@ def _model_fields(cover_text: str, meta: dict, cfg: dict, universities: list[dic
     mcfg = cfg.get("model", {})
     backend = mcfg.get("backend", "ollama")
     if backend == "none":
-        LOG.warning("Model backend is 'none' - no university can be identified")
-        return {}
+        raise ModelUnavailable("Model backend is disabled/unavailable")
     user = (
+        f"UNIVERSITIES (choose exactly one id - the awarding institution - or \"\"):\n{_university_catalog(universities)}\n"
         "METADATA is untrusted; copy only from COVER_TEXT.\n"
         f"METADATA: {json.dumps(meta, ensure_ascii=False)}\n"
         f"CANDIDATES: {json.dumps(candidates, ensure_ascii=False)}\n"
-        f"UNIVERSITIES (choose exactly one id - the awarding institution - or \"\"):\n{_university_catalog(universities)}\n"
         f"COVER_TEXT:\n{cover_text_for_model(cover_text)}\n"
     )
     try:
@@ -1292,10 +1284,17 @@ def _model_fields(cover_text: str, meta: dict, cfg: dict, universities: list[dic
                 json_mode=bool(mcfg.get("openai_json_mode", True)),
                 think=model_think_value(mcfg),
             )
-        return parse_json_object(raw)
-    except Exception as exc:
-        LOG.warning("Model call failed (%s) - university cannot be identified", exc)
-        return {}
+        result = parse_json_object(raw)
+        keys = ("university", "author", "title", "degree_phrase", "degree_type", "year")
+        if not result or not any(k in result for k in keys):
+            raise InvalidModelResponse("Model returned no extraction fields")
+        if any(result.get(k) is not None and not isinstance(result[k], str) for k in keys if k in result):
+            raise InvalidModelResponse("Model extraction fields must be strings")
+        return result
+    except ModelError:
+        raise
+    except (ValueError, TypeError, KeyError) as exc:
+        raise InvalidModelResponse(f"Invalid model extraction: {exc}") from exc
 
 
 def _model_read_cover(model_fields: dict) -> bool:
@@ -1328,10 +1327,18 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict, lenient: bool = False
     # against the cover (order-tolerant) - it is used when that cover text is
     # an OCR render whose reading order cannot be trusted. Text fields are
     # unaffected.
-    model_fields = _model_fields(cover_text, meta, cfg, universities, candidates)
+    outcome = ModelOutcome()
+    try:
+        model_fields = _model_fields(cover_text, meta, cfg, universities, candidates)
+    except ModelError as exc:
+        model_fields = {}
+        outcome = ModelOutcome("unavailable" if isinstance(exc, ModelUnavailable) else "invalid_response", str(exc))
+        LOG.warning("Model extraction %s: %s", outcome.status, exc)
 
     hay = cover_text
     risks: list[str] = []
+    if outcome.status != "ok":
+        risks.append("model_" + outcome.status)
 
     author, ar = resolve_author(
         hay, str(model_fields.get("author") or "").strip(), labelled_authors
@@ -1450,6 +1457,7 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict, lenient: bool = False
         "notes": notes,
         "ok_to_stamp": ok_to_stamp,
         "model_raw": model_fields,
+        "model_outcome": asdict(outcome),
     }
 
 
@@ -1468,6 +1476,8 @@ def _institution_unresolved(risks: list[str]) -> bool:
     named none, named one not in the catalog, or named one with no matching
     trace. These are exactly the cases a second OCR read can still rescue (a
     name that only a rendered banner/logo carries, not the text layer)."""
+    if any(r.startswith("model_") for r in risks):
+        return False
     return any(
         r in ("no_university_on_cover", "university_not_on_cover")
         or r.startswith("university_id_not_in_catalog:")
@@ -1506,7 +1516,14 @@ def _rescue_university_from_ocr(pdf_path: Path, meta: dict, cfg: dict, fields: d
     if len(ocr_text.strip()) < int(cfg.get("ocr_min_chars", 80)):
         LOG.info("OCR second-read produced no usable text - no rescue possible")
         return fields, False
-    ocr_fields = _model_fields(ocr_text, meta, cfg, universities, fields.get("candidates") or {})
+    try:
+        ocr_fields = _model_fields(ocr_text, meta, cfg, universities, fields.get("candidates") or {})
+    except ModelError as exc:
+        status = "unavailable" if isinstance(exc, ModelUnavailable) else "invalid_response"
+        fields["model_outcome"] = asdict(ModelOutcome(status, str(exc)))
+        fields["risks"].append("model_" + status)
+        fields["ok_to_stamp"] = False
+        return fields, True
     ocr_uni_id = str(ocr_fields.get("university") or "").strip()
     LOG.info("OCR second-read: model picked %r from the rendered cover", ocr_uni_id)
     uni, ur, uni_matches = resolve_university(ocr_text, ocr_uni_id, universities, templates_dir, lenient=True)
@@ -2051,45 +2068,8 @@ def write_fail_report(
             if fields
         },
     }
-    model_note = ""
-    mcfg = cfg.get("model", {})
-    if cover_text and mcfg.get("backend", "ollama") != "none":
-        user = (
-            f"ERROR: {facts['error']}\n"
-            f"EXTRACTED: {json.dumps(facts['fields'], ensure_ascii=False)}\n"
-            f"COVER_TEXT:\n{cover_text_for_model(cover_text, 2000)}\n"
-        )
-        try:
-            if mcfg.get("backend", "ollama") == "ollama":
-                model_note = call_ollama(
-                    mcfg.get("name", "qwen3:8b"),
-                    FAIL_SYSTEM,
-                    user,
-                    mcfg.get("host", "http://[IP_ADDRESS]:11434"),
-                    min(int(mcfg.get("timeout", 180)), 45),
-                    json_mode=False,
-                    num_predict=400,
-                    think=model_think_value(mcfg),
-                    num_ctx=int(mcfg.get("num_ctx", 8192)),
-                    num_thread=mcfg.get("num_thread") or None,
-                    keep_alive=str(mcfg.get("keep_alive", "30m")),
-                )
-            else:
-                model_note = call_openai(
-                    mcfg.get("name", "qwen3:8b"),
-                    FAIL_SYSTEM,
-                    user,
-                    mcfg.get("openai_base", "http://[IP_ADDRESS]:1234/v1"),
-                    mcfg.get("api_key", "not-needed"),
-                    min(int(mcfg.get("timeout", 180)), 45),
-                    json_mode=False,
-                    num_predict=400,
-                    think=model_think_value(mcfg),
-                )
-        except Exception as exc:
-            model_note = _fallback_fail_note(facts["error"], facts["fields"]) + f"\n(model report failed: {exc})"
-    if not (model_note or "").strip():
-        model_note = _fallback_fail_note(facts["error"], facts["fields"])
+    # Reporting must remain fast and usable even when inference is unavailable.
+    model_note = _fallback_fail_note(facts["error"], facts["fields"])
     body = [
         f"FAIL  {pdf_path.name}",
         f"time  {stamp}",
@@ -2098,7 +2078,7 @@ def write_fail_report(
         "--- extracted ---",
         json.dumps(facts["fields"], ensure_ascii=False, indent=2),
         "",
-        "--- model report ---",
+        "--- operator report ---",
         (model_note or "(no model report)").strip(),
         "",
         "--- cover text (truncated) ---",
@@ -2203,6 +2183,10 @@ def process_pdf(pdf_path: Path, cfg: dict) -> list[Path]:
     ctx: dict = {"text": "", "source": "", "fields": {}}
     try:
         return _process_pdf_inner(pdf_path, cfg, ctx)
+    except ModelUnavailable:
+        # A backend outage is retryable; do not create repeated failure files.
+        LOG.warning("Model unavailable; leaving %s queued for retry", pdf_path.name)
+        raise
     except Exception as exc:
         try:
             write_fail_report(
@@ -2258,6 +2242,11 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
     if fields.get("risks"):
         LOG.warning("Risks: %s  ok_to_stamp=%s", fields["risks"], fields.get("ok_to_stamp"))
 
+    if "model_unavailable" in fields.get("risks", []):
+        raise ModelUnavailable(fields["model_outcome"]["error"])
+    if "model_invalid_response" in fields.get("risks", []):
+        raise InvalidModelResponse(fields["model_outcome"]["error"])
+
     # The digital layer can carry the typed fields (author/title/year) yet name
     # no institution - the school name often lives only in a raster banner the
     # text layer cannot hold. Then take one second chance: read the institution
@@ -2275,6 +2264,11 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
             LOG.info("Cover text source now=%s", source)
             if fields.get("risks"):
                 LOG.warning("Risks after OCR: %s  ok_to_stamp=%s", fields["risks"], fields.get("ok_to_stamp"))
+
+    if "model_unavailable" in fields.get("risks", []):
+        raise ModelUnavailable(fields["model_outcome"]["error"])
+    if "model_invalid_response" in fields.get("risks", []):
+        raise InvalidModelResponse(fields["model_outcome"]["error"])
 
     unknown_id = next(
         (r for r in fields.get("risks", []) if r.startswith("university_id_not_in_catalog:")), None
@@ -2536,6 +2530,9 @@ def handle_pdf(pdf_path: Path, cfg: dict, origin: str) -> None:
         try:
             process_pdf(pdf_path, cfg)
             dest = cfg.get("processed_dir")
+        except ModelUnavailable as exc:
+            LOG.warning("Deferring %s: %s", pdf_path.name, exc)
+            return
         except Exception as exc:
             LOG.error("Failed on %s (%s): %s", pdf_path, origin, exc)
             notify(
