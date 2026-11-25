@@ -615,6 +615,20 @@ def resolve_university(
             grounded.append(cand)
     if not grounded:
         return uni_obj, ["university_not_on_cover"], [{"id": uni_id}]
+    # A shared city is weaker than an explicitly named different institution
+    # in that city. Veto only: the model must still choose the institution.
+    if all(len(norm(c).split()) == 1 for c in grounded):
+        for other in universities:
+            if other.get("id") == uni_id:
+                continue
+            for alias in other.get("aliases", []):
+                words = norm(alias).split()
+                if len(words) < 2 or not any(norm(c) in words for c in grounded):
+                    continue
+                matches = any(_alias_in_blob(alias, norm(cover_matching_blob(b.text)),
+                                            lenient=b.source != "digital") for b in evidence.blocks) if evidence else _alias_in_blob(alias, blob, lenient=lenient)
+                if matches:
+                    return uni_obj, ["university_not_on_cover"], [{"id": uni_id, "conflicting_name": alias}]
     return uni_obj, [], [{"id": uni_id, "template": uni_obj.get("template", ""), "grounded_on": grounded}]
 
 
@@ -670,6 +684,18 @@ def resolve_author(cover_text: str, model_author: str, labelled: list[str]) -> t
     elif weak:
         pick = weak[0]
 
+    # Only split a combined field when its explicit label establishes that
+    # the final comma-separated value is a birthplace, never for plain names.
+    combined = re.search(
+        r"(?im)^[^\n]*(?:name|autor)[^\n]*(?:geburtsort|place\s+of\s+birth)[^\n]*\n\s*([^\n]+)",
+        cover_text,
+    )
+    if combined:
+        value = combined.group(1).strip()
+        name, comma, _place = value.rpartition(",")
+        if comma and name.strip() and pick in (value, name.strip()):
+            pick = name.strip()
+            risks.append("author_birthplace_excluded")
     if pick and looks_like_supervisor(pick):
         risks.append("author_looks_like_supervisor")
     return pick, risks
@@ -746,11 +772,15 @@ def resolve_year(
 
 SYSTEM = """You extract thesis cover fields from COVER_TEXT.
 Reply with ONLY a JSON object, no markdown:
-{"university":"","author":"","title":"","degree_phrase":"","degree_type":"bachelor|master|dissertation|unknown","year":""}
+{"university":"","institution_status":"identified|ambiguous|not_found","author":"","title":"","degree_phrase":"","degree_type":"bachelor|master|dissertation|unknown","year":""}
 Rules:
 - author, title, year, degree_phrase MUST be copied character-for-character from COVER_TEXT. Never from METADATA.
 - "university" is the id of the awarding institution, chosen from the UNIVERSITIES list in the message (the letterhead / body that issued the thesis). Output exactly that id - do NOT copy a written name. If several bodies appear, use the one that awarded the work. If none is clearly identifiable, use "".
+- Set institution_status to "identified" when one institution is the cover's university/letterhead, even if it appears only in a logo and there is no explicit awarder label. A single university heading/logo on a thesis cover is sufficient; do not demand the words "awarded by". Partners, employers, sponsors and supervisors' affiliations are not awarders. Use "ambiguous" only when there are multiple plausible awarding institutions with no way to distinguish them, and set university to "". If no institution is identifiable, use "not_found" and university "".
+- Respect page and image-position labels. An upper/lower logo reference can identify an institution only when the evidence establishes that logo's position; never guess from the order of detached OCR fragments.
+- For example, if the text says "awarding institution: upper logo" and "lower logo: cooperation partner", choose the institution named in [upper image], exclude [lower image], and use "identified". If the text says the work is jointly awarded by two universities with equal roles, use "ambiguous". Birthplaces and postal addresses are not institutions and do not create ambiguity.
 - The author is the candidate who submitted the work. Do not use Erstgutachter, Zweitgutachter, Betreuer, or supervisor names.
+- Exclude birthplace, address and dates from author, including combined fields labelled Name, Place of Birth / Name, Geburtsort. Preserve surname-first names and name particles; a comma alone does not indicate a birthplace.
 - The author line may stand alone with no "vorgelegt von" / "written by". Still copy that name exactly.
 - If several years appear, YOU decide which is the publishing/submission year (not a start date, copyright, or cited work). Copy that year exactly.
 - degree_phrase MUST be copied character-for-character from COVER_TEXT AND be exactly one of these options: __DEGREE_OPTIONS__. If the cover shows a degree-programme name instead (e.g. "Bachelor of Arts", "Master of Science"), set degree_phrase to "" and pick degree_type. Do not rewrite it.
@@ -1101,11 +1131,13 @@ def _model_fields(cover_text: str, meta: dict, cfg: dict, universities: list[dic
                 think=model_think_value(mcfg),
             )
         result = parse_json_object(raw)
-        keys = ("university", "author", "title", "degree_phrase", "degree_type", "year")
+        keys = ("university", "institution_status", "author", "title", "degree_phrase", "degree_type", "year")
         if not result or not any(k in result for k in keys):
             raise InvalidModelResponse("Model returned no extraction fields")
         if any(result.get(k) is not None and not isinstance(result[k], str) for k in keys if k in result):
             raise InvalidModelResponse("Model extraction fields must be strings")
+        if "institution_status" in result and result["institution_status"] not in {"identified", "ambiguous", "not_found"}:
+            raise InvalidModelResponse("Invalid institution_status")
         return result
     except ModelError:
         raise
@@ -1124,6 +1156,15 @@ def _model_read_cover(model_fields: dict) -> bool:
         str(model_fields.get(k) or "").strip()
         for k in ("author", "title", "year")
     )
+
+
+def joint_award_on_cover(text: str) -> bool:
+    """Explicit joint awarding language cannot be reduced to a single foil."""
+    return bool(re.search(
+        r"(?im)^.*(?:gemeinsam\w*[^\n]{0,90}(?:beider|beiden|mehrerer)\s+(?:hochschulen|universitäten)|"
+        r"(?:jointly\s+awarded|joint\s+(?:thesis|degree))[^\n]{0,90}(?:(?:both|two)\s+(?:universities|institutions)|universities|institutions)).*$",
+        text,
+    ))
 
 
 def extract_fields(cover_text: str, meta: dict, cfg: dict, lenient: bool = False) -> dict:
@@ -1195,10 +1236,22 @@ def extract_fields(cover_text: str, meta: dict, cfg: dict, lenient: bool = False
                                              lenient=lenient, evidence=cfg.get("_evidence"))
     risks.extend(ur)
 
+    if joint_award_on_cover(cover_text):
+        uni, uni_matches = None, []
+        risks.append("university_ambiguous")
+    elif model_fields.get("institution_status") in {"ambiguous", "not_found"}:
+        uni, uni_matches = None, []
+        if model_fields["institution_status"] == "ambiguous":
+            risks.append("university_ambiguous")
+        elif "no_university_on_cover" not in risks:
+            risks.append("no_university_on_cover")
+
     notes: list[str] = []
     if "title_not_on_cover" in risks:
         notes.append("Title omitted: the model's title could not be matched to the PDF cover.")
     institution_notes: list[str] = []
+    if "university_ambiguous" in risks:
+        institution_notes.append("Awarding institution is ambiguous; review the original cover before stamping.")
     if "university_not_on_cover" in risks:
         institution_notes.append(
             f"The model identified '{uni_id}', but no configured name evidence "
@@ -1270,7 +1323,7 @@ def _institution_unresolved(risks: list[str]) -> bool:
     named none, named one not in the catalog, or named one with no matching
     trace. These are exactly the cases a second OCR read can still rescue (a
     name that only a rendered banner/logo carries, not the text layer)."""
-    if any(r.startswith("model_") for r in risks):
+    if "university_ambiguous" in risks or any(r.startswith("model_") for r in risks):
         return False
     return any(
         r in ("no_university_on_cover", "university_not_on_cover")
@@ -1330,6 +1383,12 @@ def _rescue_university_from_ocr(pdf_path: Path, meta: dict, cfg: dict, fields: d
         ocr_text, ocr_uni_id, universities, templates_dir, lenient=True,
         evidence=ocr_result if isinstance(ocr_result, CoverEvidence) else None,
     )
+    if joint_award_on_cover(ocr_text):
+        uni, uni_matches = None, []
+        ur = ["university_ambiguous"]
+    elif ocr_fields.get("institution_status") in {"ambiguous", "not_found"}:
+        uni, uni_matches = None, []
+        ur = ["university_ambiguous" if ocr_fields["institution_status"] == "ambiguous" else "no_university_on_cover"]
 
     fields["risks"] = [
         r for r in fields.get("risks", [])

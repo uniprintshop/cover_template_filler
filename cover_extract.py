@@ -22,6 +22,7 @@ class EvidenceBlock:
     page: int
     source: str
     text: str
+    region: str = ""
 
 
 @dataclass
@@ -44,12 +45,36 @@ class CoverEvidence:
         ocr = [b for b in self.blocks if b.source != "digital"]
         # Reserve most of the window for typed fields even on image-rich covers.
         image_budget = min(700, max_chars // 3) if digital else max_chars
-        image_text = "\n".join(b.text for b in ocr)[:image_budget]
-        digital_text = "\n\n".join(b.text for b in digital)
-        if not digital:
-            return image_text
+        def render(blocks, budget):
+            if not blocks or budget <= 0:
+                return ""
+            # Allocate across pages/sources instead of losing page two behind
+            # a long abstract. Keep both ends, including institutional footers.
+            headers = [f"[page {b.page}; {b.source}" + (f"; {b.region}" if b.region else "") + "]\n" for b in blocks]
+            available = max(0, budget - sum(map(len, headers)) - 2 * (len(blocks) - 1))
+            sizes = [0] * len(blocks)
+            while available and any(sizes[i] < len(b.text) for i, b in enumerate(blocks)):
+                active = [i for i, b in enumerate(blocks) if sizes[i] < len(b.text)]
+                share = max(1, available // len(active))
+                for i in active:
+                    take = min(share, available, len(blocks[i].text) - sizes[i])
+                    sizes[i] += take
+                    available -= take
+            parts = []
+            for b, header, size in zip(blocks, headers, sizes):
+                text = b.text
+                if len(text) > size:
+                    if size < 20:
+                        text = text[:size]
+                    else:
+                        tail = (size - 5) // 3
+                        text = text[:size - 5 - tail] + "\n...\n" + text[-tail:]
+                parts.append(header + text)
+            return "\n\n".join(parts)[:budget]
+
+        image_text = render(ocr, image_budget)
         remaining = max_chars - len(image_text) - (2 if image_text else 0)
-        return (image_text + "\n\n" if image_text else "") + digital_text[:max(0, remaining)]
+        return (image_text + ("\n\n" if image_text and digital else "") + render(digital, remaining))[:max_chars]
 
 
 def compact_cover(text: str) -> str:
@@ -102,6 +127,20 @@ def _image_blocks(path, pages, cfg, reader=None):
     attempted = 0
     try:
         reader = reader or PdfReader(str(path))
+        positions = {}
+        try:
+            with pdfplumber.open(str(path)) as pdf:
+                for number, page in enumerate(pdf.pages[:pages], 1):
+                    for image in page.images:
+                        center = (image["top"] + image["bottom"]) / 2 / page.height
+                        region = "upper" if center < .4 else "lower" if center > .6 else "middle"
+                        key = (number, image["name"])
+                        if key in positions and positions[key] != region + " image":
+                            positions[key] = "position unknown"
+                        else:
+                            positions[key] = region + " image"
+        except Exception as exc:
+            LOG.debug("Image positions unavailable: %s", exc)
         for number, page in enumerate(reader.pages[:pages], 1):
             for entry in page.images:
                 remaining = deadline - time.monotonic()
@@ -126,7 +165,8 @@ def _image_blocks(path, pages, cfg, reader=None):
                                     min(float(cfg.get("ocr_timeout_seconds", 8)), remaining), "--psm 11")
                     text = compact_cover(text)
                     if _logo_text_plausible(text):
-                        blocks.append(EvidenceBlock(number, "embedded_ocr", text))
+                        region = positions.get((number, Path(getattr(entry, "name", "")).stem), "position unknown")
+                        blocks.append(EvidenceBlock(number, "embedded_ocr", text, region))
                 except (OSError, ValueError, RuntimeError, Image.DecompressionBombError) as exc:
                     LOG.warning("Skipping unreadable cover image on page %s: %s", number, exc)
     except Exception as exc:

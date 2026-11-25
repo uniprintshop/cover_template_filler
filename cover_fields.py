@@ -3,7 +3,7 @@
 BLOCKING_RISKS = frozenset({
     "multiple_years_unresolved", "author_looks_like_supervisor", "no_university_on_cover",
     "university_not_on_cover", "no_template_for_university", "model_unavailable",
-    "model_invalid_response",
+    "model_invalid_response", "university_ambiguous",
 })
 
 

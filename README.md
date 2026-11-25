@@ -198,6 +198,11 @@ The benchmark uses temporary outputs/journals, disables notifications, leaves
 the source PDF untouched, and prints JSON results. It still uses the configured
 model and reads the configured templates. See `PERFORMANCE.md` for measurements.
 
+For a varied, ground-truthed corpus instead of repeating one PDF, see
+[`RELIABILITY.md`](RELIABILITY.md). `reliability_suite.py` generates 46 synthetic
+covers, including 18 logo-only cases using real template branding, then scores
+real-model outputs and timing in isolated experiment directories.
+
 ## Code and dependencies
 
 - `thesis_cover_watch.py`: orchestration, field heuristics, template roles, CLI

@@ -2,3 +2,4 @@ __pycache__
 config.json
 failed_reports/
 .venv/
+/reliability_runs/
