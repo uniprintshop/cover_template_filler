@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import urllib.error
 import urllib.request
+from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
@@ -21,10 +22,13 @@ class ModelFailureTests(unittest.TestCase):
 
     def test_unavailable_model_does_not_trigger_ocr_or_report_inference(self):
         cfg = {"model": {"backend": "ollama"}}
-        with patch.object(w, "get_cover_text", return_value=("Cover text " * 10, "digital")), \
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(w, "staged_pdf", return_value=nullcontext((Path("cover.pdf"), "test"))), \
+                patch.object(w, "get_cover_text", return_value=("Cover text " * 10, "digital")), \
                 patch.object(w, "pdf_metadata", return_value={}), \
                 patch.object(w, "call_ollama", side_effect=model.ModelUnavailable("offline")) as call, \
                 patch.object(w, "extract_ocr") as ocr, patch.object(w, "write_fail_report") as report:
+            cfg["state_dir"] = tmp
             with self.assertRaises(model.ModelUnavailable):
                 w.process_pdf(Path("cover.pdf"), cfg)
         self.assertEqual(call.call_count, 1)

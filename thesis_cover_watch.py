@@ -30,6 +30,7 @@ from cover_model import (
     InvalidModelResponse, ModelError, ModelOutcome, ModelUnavailable,
     request_json, require_content,
 )
+from cover_jobs import JobState, RetryableJobError, atomic_write, staged_pdf
 
 try:
     import pdfplumber
@@ -2151,7 +2152,9 @@ def _write_upf(template_path: Path, fields: dict, cfg: dict, out_path: Path) -> 
     # files it cannot open. Normalize, then force CRLF before writing.
     filled = filled.replace("\r\n", "\n").replace("\n", "\r\n")
     data = filled.encode("utf-8")
-    retry_io(lambda: out_path.write_bytes(data), what=f"writing {out_path.name}")
+    job = cfg.get("_job")
+    retry_io(lambda: job.publish(out_path, data) if job else atomic_write(out_path, data),
+             what=f"writing {out_path.name}")
     LOG.info("Wrote %s from %s", out_path.name, template_path.name)
     return out_path
 
@@ -2182,11 +2185,21 @@ def process_pdf(pdf_path: Path, cfg: dict) -> list[Path]:
     LOG.info("Processing %s", pdf_path)
     ctx: dict = {"text": "", "source": "", "fields": {}}
     try:
-        return _process_pdf_inner(pdf_path, cfg, ctx)
-    except ModelUnavailable:
+        with staged_pdf(pdf_path) as (local_pdf, digest):
+            job = JobState(pdf_path, digest, cfg)
+            if job.record["completed"]:
+                LOG.info("Already generated %s — retrying archival only", pdf_path.name)
+                return [Path(p) for p in job.record["outputs"]]
+            runtime = {**cfg, "_job": job, "_source_pdf": str(pdf_path)}
+            written = _process_pdf_inner(local_pdf, runtime, ctx)
+            job.complete(written)
+            return written
+    except (ModelUnavailable, RetryableJobError):
         # A backend outage is retryable; do not create repeated failure files.
         LOG.warning("Model unavailable; leaving %s queued for retry", pdf_path.name)
         raise
+    except OSError as exc:
+        raise RetryableJobError(f"Job I/O interrupted: {exc}") from exc
     except Exception as exc:
         try:
             write_fail_report(
@@ -2219,8 +2232,7 @@ def process_pdf(pdf_path: Path, cfg: dict) -> list[Path]:
         raise
 
 
-def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
-    t_start = time.monotonic()
+def _prepare_pdf(pdf_path: Path, cfg: dict, ctx: dict) -> tuple[dict, str, float, float]:
     t0 = time.monotonic()
     text, source = get_cover_text(pdf_path, cfg)
     t_read = time.monotonic() - t0
@@ -2324,6 +2336,23 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
             "template/templates entries in config.json."
         )
 
+    return fields, source, t_read, t_model
+
+
+def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
+    t_start = time.monotonic()
+    job = cfg.get("_job")
+    prepared = job.prepared() if job else None
+    if prepared:
+        fields, source = prepared["fields"], prepared["source"]
+        ctx.update(text=prepared["text"], source=source, fields=fields)
+        t_read = t_model = 0.0
+        LOG.info("Resuming prepared output publication for %s", pdf_path.name)
+    else:
+        fields, source, t_read, t_model = _prepare_pdf(pdf_path, cfg, ctx)
+        if job:
+            job.prepared({"fields": fields, "source": source, "text": ctx["text"]})
+
     templates_dir = Path(cfg["templates_dir"])
     uni_obj = next(
         (u for u in cfg.get("universities", []) if u.get("id") == fields["university_id"]),
@@ -2352,10 +2381,20 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
     out_dir = Path(cfg["output_dir"])
     ensure_dirs(out_dir)
     t_write0 = time.monotonic()
-    _, _, sidecar = allocate_output_paths(out_dir, output_base_name(fields))
+    job_suffix = "_" + job.record["generation"] if job else ""
+    # A journal generation owns its names even before any variant is published.
+    # A deliberate --force run receives a fresh generation.
+    def paths_for(base):
+        if job:
+            stem = base + job_suffix
+            return out_dir / f"{stem}.upf", out_dir / f"{stem}_TITLE.upf", out_dir / f"{stem}.json"
+        return allocate_output_paths(out_dir, base)
+
+    _, _, sidecar = paths_for(output_base_name(fields))
     written: list[Path] = []
     outputs: list[dict] = []
     variant_errors: list[str] = []
+    publication_io_errors: list[str] = []
 
     # Optional extra file per template: the TITEL/TITLE sibling variant.
     # Off by default; enable with "write_title_variant": true.
@@ -2368,13 +2407,15 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
             # Multiple variants: make each output file identifiable by its
             # source template, e.g. `…_th-koeln_Koln_TH_Muster.upf`.
             base = f"{base}_{safe_stem(tpl.stem)}"
-        plain_path, _tp, _sc = allocate_output_paths(out_dir, base)
+        plain_path, _tp, _sc = paths_for(base)
         try:
             path = _write_upf(tpl, fields, cfg, plain_path)
             written.append(path)
             outputs.append({"variant": "plain", "template": tpl.name, "path": str(path)})
         except Exception as exc:
             variant_errors.append(f"plain ({tpl.name}): {exc}")
+            if isinstance(exc, OSError):
+                publication_io_errors.append(str(exc))
             LOG.exception("Failed to fill template %s", tpl)
 
         if write_title:
@@ -2395,26 +2436,28 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
                     title_base = f"{title_base}_Titel"
                 else:
                     title_base = f"{title_base}_{safe_stem(titled.stem)}"
-                title_path, _t2, _s2 = allocate_output_paths(out_dir, title_base)
+                title_path, _t2, _s2 = paths_for(title_base)
                 try:
                     path = _write_upf(titled, fields, cfg, title_path)
                     written.append(path)
                     outputs.append({"variant": "title", "template": titled.name, "path": str(path)})
                 except Exception as exc:
                     variant_errors.append(f"title ({titled.name}): {exc}")
+                    if isinstance(exc, OSError):
+                        publication_io_errors.append(str(exc))
                     LOG.exception("Failed to fill title template %s", titled)
             elif single:
                 variant_errors.append(f"no TITEL/TITLE sibling next to {tpl.name}")
                 LOG.info("No TITEL/TITLE sibling for family of %s", tpl.name)
 
+    if publication_io_errors:
+        raise RetryableJobError("Output publication interrupted: " + "; ".join(publication_io_errors))
     if not written:
         raise RuntimeError("Could not write any UPF: " + "; ".join(variant_errors))
 
-    retry_io(
-        lambda: sidecar.write_text(
-            json.dumps(
+    sidecar_data = json.dumps(
                 {
-                    "pdf": str(pdf_path),
+                    "pdf": cfg.get("_source_pdf", str(pdf_path)),
                     "text_source": source,
                     "ok_to_stamp": fields.get("ok_to_stamp", True),
                     "risks": fields.get("risks", []),
@@ -2426,15 +2469,16 @@ def _process_pdf_inner(pdf_path: Path, cfg: dict, ctx: dict) -> list[Path]:
                 },
                 ensure_ascii=False,
                 indent=2,
-            ),
-            encoding="utf-8",
-        ),
-        what=f"writing {sidecar.name}",
-    )
+            ).encode("utf-8")
+    retry_io(lambda: job.publish(sidecar, sidecar_data) if job else atomic_write(sidecar, sidecar_data),
+             what=f"writing {sidecar.name}")
     if fields.get("notes"):
         notes_path = sidecar.with_name(sidecar.stem + "_NOTES.txt")
-        notes_path.write_text("\n\n".join(fields["notes"]).strip() + "\n", encoding="utf-8")
-        LOG.info("Wrote model notes %s", notes_path.name)
+        try:
+            atomic_write(notes_path, ("\n\n".join(fields["notes"]).strip() + "\n").encode("utf-8"))
+            LOG.info("Wrote operator notes %s", notes_path.name)
+        except OSError:
+            LOG.exception("Optional notes could not be written; UPFs and sidecar are complete")
     if variant_errors:
         LOG.warning("Variant issues: %s", variant_errors)
     if not fields.get("ok_to_stamp", True):
@@ -2530,7 +2574,7 @@ def handle_pdf(pdf_path: Path, cfg: dict, origin: str) -> None:
         try:
             process_pdf(pdf_path, cfg)
             dest = cfg.get("processed_dir")
-        except ModelUnavailable as exc:
+        except (ModelUnavailable, RetryableJobError) as exc:
             LOG.warning("Deferring %s: %s", pdf_path.name, exc)
             return
         except Exception as exc:
