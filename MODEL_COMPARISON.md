@@ -28,3 +28,19 @@ Key findings:
 - `ornith-1.5:9b` and `mimo-v2.6:9b` are the only tested models that handle the
   full extraction and institution-role workload; `mimo-v2.6:9b` is the
   more consistent of the two on latency.
+
+## Full-corpus comparison (46 cases, one round each)
+
+| Model | Correct | Median | p95 | Wrong stamps | Failures |
+|---|---:|---:|---:|---:|---|
+| `ornith-1.5:9b` | 44/46 | 16.2s | ~32s | 0 | 2 safe refusals (small wordmark, symbol-only) |
+| `mimo-v2.6:9b` | 42/46 | 16.0s | 33.3s | 2 field mismatches | wrong degree (`30_generic_degree`), wrong title on rotated page (`45`); same 2 safe refusals |
+| `gemma4:e4b` | 42/46 | **3.1s** | 7.1s | 1 wrong template + 1 field mismatch | stamped `bergische-ihk` instead of `wuppertal` (`10_logo_second_page`); same rotated-page title miss; same 2 safe refusals |
+
+Results: `20261125T125946Z_2e589288` (ornith),
+`20261125T150855Z_83d010c3` (mimo-v2.6), `20261125T154616Z_1bb7461e` (gemma4:e4b).
+
+Assessment: `gemma4:e4b` is ~5× faster but published a wrong institution foil
+once. Since covers are reviewed before stamping and the watcher is not run
+unattended, `gemma4:e4b` is the configured standard model; `ornith-1.5:9b`
+remains the choice for unattended operation.

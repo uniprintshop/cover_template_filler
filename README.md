@@ -232,6 +232,21 @@ Small-model comparison (six mixed cases, one round each; see
 The validation guards prevented every wrong-foil stamp on all models.
 `ornith-1.5:9b` and `mimo-v2.6:9b` are the recommended models.
 
+Full-corpus comparison (46 cases, one round each; see
+[`MODEL_COMPARISON.md`](MODEL_COMPARISON.md) for details):
+
+| Model | Correct | Median | Wrong stamps |
+|---|---:|---:|---|
+| `ornith-1.5:9b` | 44/46 | 16.2s | 0 |
+| `mimo-v2.6:9b` | 42/46 | 16.0s | 2 field mismatches |
+| `gemma4:e4b` | 42/46 | **3.1s** | 1 wrong template + 1 field mismatch |
+
+`gemma4:e4b` is roughly 5× faster than the other two, but stamped a wrong
+institution on the logo-second-page case. Since covers are reviewed before
+foil-stamping and the watcher is not run unattended, that trade-off is accepted
+and `gemma4:e4b` is the configured standard model. For unattended operation,
+`ornith-1.5:9b` remains the safest choice.
+
 ## Code and dependencies
 
 - `thesis_cover_watch.py`: orchestration, field heuristics, template roles, CLI
