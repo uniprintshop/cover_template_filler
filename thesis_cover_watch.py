@@ -108,10 +108,11 @@ def wait_until_stable(path: Path, settle: float) -> bool:
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
         try:
-            size = path.stat().st_size
+            stat = path.stat()
+            size = (stat.st_size, stat.st_mtime_ns)
         except FileNotFoundError:
             return False
-        if size == last and size > 0:
+        if size == last and size[0] > 0:
             if stable_since is None:
                 stable_since = time.monotonic()
             elif time.monotonic() - stable_since >= settle:
@@ -124,7 +125,10 @@ def wait_until_stable(path: Path, settle: float) -> bool:
         # The deadline passed while the file kept changing. Accept it only
         # if the writes have actually stopped; otherwise a slow copy is
         # still in flight and the periodic rescan will retry it later.
-        return stable_since is not None and path.stat().st_size > 0
+        stat = path.stat()
+        return (stable_since is not None
+                and time.monotonic() - stable_since >= settle
+                and (stat.st_size, stat.st_mtime_ns) == last)
     except FileNotFoundError:
         return False
 
@@ -640,16 +644,26 @@ def _first_word_index(word: str, blob: str) -> int:
 
 
 def _ocr_alias_in_blob(words: list[str], blob: str) -> bool:
-    sig = [w for w in words if len(w) >= 4]
+    sig = list(dict.fromkeys(w for w in words if len(w) >= 4))
     if not sig:
         return False
     if len(sig) == 1:
         return _first_word_index(sig[0], blob) >= 0
-    idx = [_first_word_index(w, blob) for w in sig]
-    if any(i < 0 for i in idx):
-        return False
-    span = (max(idx) - min(idx)) + max(len(w) for w in sig)
-    return span <= _OCR_ALIAS_WINDOW
+    hits = sorted((m.start(), m.end(), word) for word in sig
+                  for m in re.finditer(rf"(?<!\w){re.escape(word)}(?!\w)", blob))
+    counts: dict[str, int] = {}
+    left = 0
+    for right, end, word in hits:
+        counts[word] = counts.get(word, 0) + 1
+        while left < len(hits) and end - hits[left][0] > _OCR_ALIAS_WINDOW:
+            old = hits[left][2]
+            counts[old] -= 1
+            if not counts[old]:
+                del counts[old]
+            left += 1
+        if len(counts) == len(sig):
+            return True
+    return False
 
 
 def _alias_in_blob(alias: str, blob: str, lenient: bool = False) -> bool:
@@ -671,9 +685,8 @@ def _alias_in_blob(alias: str, blob: str, lenient: bool = False) -> bool:
         # Glued-text fallback (PDFs whose text layer has no spaces, e.g.
         # "derBergischenUniversitätWuppertal"): the alias must appear with
         # all spaces removed, as one contiguous run, to still count.
-        compact_blob = re.sub(r"[\s,.;:()_\-–—/]+", "", blob)
         compact_a = "".join(words)
-        if compact_a in compact_blob:
+        if re.search(rf"(?<!\w){re.escape(compact_a)}(?!\w)", blob):
             return True
         # OCR reading order can split a name so it is no longer contiguous;
         # only on an OCR-derived cover do we relax to "all words clustered".
@@ -686,7 +699,9 @@ def _alias_in_blob(alias: str, blob: str, lenient: bool = False) -> bool:
     # a glued compound ("...universitätwuppertal") with no space before it.
     if re.search(rf"(?:^|[^\wäöüß]){re.escape(a)}(?:$|[^\wäöüß])", blob) is not None:
         return True
-    if len(a) >= 7 and a in re.sub(r"\s+", "", blob):
+    if len(a) >= 7 and re.search(
+        rf"(?:universitat|university|fachhochschule|hochschule)(?:zu|in|of)?{re.escape(a)}(?!\w)", blob
+    ):
         return True
     if lenient:
         return _ocr_alias_in_blob(words, blob)
@@ -701,7 +716,7 @@ _ADDRESS_LINE_RE = re.compile(
     r"(?i)^\s*(?:postadresse|postanschrift|wohnadresse|wohnanschrift|anschrift)\s*:"
 )
 _BIRTH_LINE_RE = re.compile(
-    r"(?i)^\s*(?:geboren\b|geb\.\b|geburtsort\b|born\b|date\s+of\s+birth)"
+    r"(?i)^\s*(?:geboren\b|geb\.(?=\s|$)|geburtsort\b|born\b|date\s+of\s+birth)"
 )
 # Unlabeled address blocks: a bare "Musterstr. 12" line directly above a
 # "42103 Wuppertal" line. A line opening with five digits is a postal code,
@@ -884,9 +899,6 @@ def resolve_year(
     if re.fullmatch(r"(19|20)\d{2}", my) and my in years:
         if len(years) > 1:
             risks.append("year_chosen_by_model")
-        return my, risks
-    if re.fullmatch(r"(19|20)\d{2}", my) and my in cover_text:
-        risks.append("year_chosen_by_model")
         return my, risks
     if len(years) == 1:
         return years[0], risks
@@ -1595,14 +1607,16 @@ class TextBlock:
 
 
 def _matching_brace(s: str, open_idx: int) -> int:
-    depth = 0
-    for i in range(open_idx, len(s)):
-        if s[i] == "{":
+    # Structural braces occupy their own lines. A literal brace glyph such
+    # as "{;Arial;20;Regular" must not change the nesting depth.
+    depth = 1
+    for match in re.finditer(r"(?m)^[ \t]*([{}])[ \t]*\r?$", s[open_idx + 1:]):
+        if match[1] == "{":
             depth += 1
-        elif s[i] == "}":
+        else:
             depth -= 1
             if depth == 0:
-                return i
+                return open_idx + 1 + match.start(1)
     return -1
 
 
@@ -1655,7 +1669,7 @@ def parse_glyph_lines(block: str) -> list[GlyphLine]:
                 align = detab
                 saw_align = True
                 continue
-            parts = detab.split(";")
+            parts = detab.rsplit(";", 3)
             if len(parts) < 4:
                 continue
             ch, font, size, weight = parts[0], parts[1], parts[2], parts[3]
