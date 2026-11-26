@@ -591,6 +591,10 @@ def main():
         run_dir, summary = run_suite(args.corpus, cfg, results_dir=args.results_dir, rounds=args.rounds,
                                      seed=args.seed, order=args.order, selected=args.case, tags=args.tag,
                                      resume=args.resume, templates_dir=args.templates_dir)
+        try:
+            pipeline.release_benchmark_models(cfg)
+        except Exception:
+            logging.getLogger(__name__).debug("Benchmark model release failed", exc_info=True)
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         print(f"Report: {run_dir / 'report.md'}")
         return 0 if summary["passed"] == summary["planned"] else 1

@@ -899,6 +899,52 @@ def spawn_model_warmup(cfg: dict) -> None:
     threading.Thread(target=warm_when_idle, daemon=True).start()
 
 
+def unload_model(cfg: dict) -> None:
+    """Remove the configured model from the inference server's memory.
+
+    Used by benchmark tools so a benchmarked model does not evict the
+    production model from RAM. Failure is logged, never fatal.
+    """
+    mcfg = cfg.get("model", {})
+    if mcfg.get("backend", "ollama") != "ollama":
+        return
+    try:
+        call_ollama(
+            mcfg.get("name", "qwen3:8b"),
+            "",
+            "Unload",
+            mcfg.get("host", "http://[IP_ADDRESS]:11434"),
+            min(int(mcfg.get("timeout", 180)), 90),
+            think=model_think_value(mcfg),
+            num_ctx=1024,
+            num_thread=mcfg.get("num_thread") or None,
+            keep_alive=0,
+            num_predict=1,
+            warmup_only=True,
+        )
+    except Exception as exc:
+        LOG.warning("Model unload failed (%s) — the model may still be resident", exc)
+
+
+def release_benchmark_models(cfg: dict) -> None:
+    """Unload the model a benchmark ran with, unless it is the production model.
+
+    Only the production watcher's model should stay resident on the inference
+    box; every other benchmarked model is unloaded so it cannot evict the
+    production model and cause a ~30s cold load on the next real PDF.
+    """
+    mcfg = cfg.get("model", {})
+    if mcfg.get("backend", "ollama") != "ollama":
+        return
+    try:
+        production = load_config(Path(__file__).with_name("config.json"))
+    except (OSError, ValueError):
+        return
+    if mcfg.get("name") == production.get("model", {}).get("name"):
+        return
+    unload_model(cfg)
+
+
 # Explicit UA for hosted OpenAI-compatible endpoints: see the note in
 # call_openai — the default Python-urllib UA is banned by some WAFs.
 _OPENAI_USER_AGENT = "thesis-cover-watcher/1.0"

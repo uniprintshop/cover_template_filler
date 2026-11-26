@@ -9,7 +9,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from thesis_cover_watch import load_config, process_pdf
+from thesis_cover_watch import load_config, process_pdf, release_benchmark_models
 
 
 def main():
@@ -43,6 +43,7 @@ def main():
                             "inference": calls})
     print(json.dumps({"runs": results, "median_seconds": round(statistics.median(r["seconds"] for r in results), 3)},
                      ensure_ascii=False, indent=2))
+    release_benchmark_models(cfg)
     return 0
 
 
