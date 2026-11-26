@@ -240,12 +240,15 @@ Full-corpus comparison (46 cases, one round each; see
 | `ornith-1.5:9b` | 44/46 | 16.2s | 0 |
 | `mimo-v2.6:9b` | 42/46 | 16.0s | 2 field mismatches |
 | `gemma4:e4b` | 42/46 | **3.1s** | 1 wrong template + 1 field mismatch |
+| `nemotron-3.5-bolt:e4b` | 29/46 | 9.0s | **14 wrong templates** |
 
 `gemma4:e4b` is roughly 5× faster than the other two, but stamped a wrong
 institution on the logo-second-page case. Since covers are reviewed before
 foil-stamping and the watcher is not run unattended, that trade-off is accepted
 and `gemma4:e4b` is the configured standard model. For unattended operation,
-`ornith-1.5:9b` remains the safest choice.
+`ornith-1.5:9b` remains the safest choice. `nemotron-3.5-bolt:e4b` is unusable:
+it systematically applies the Bergische IHK template to university covers
+(14 wrong templates in one run).
 
 ## Code and dependencies
 
