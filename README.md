@@ -238,6 +238,7 @@ Full-corpus comparison (46 cases, one round each; see
 | Model | Correct | Median | Wrong stamps |
 |---|---:|---:|---|
 | `ornith-1.5:9b` | 44/46 | 16.2s | 0 |
+| `gemma4:12b` | 43/46 | 14.0s | 0 |
 | `mimo-v2.6:9b` | 42/46 | 16.0s | 2 field mismatches |
 | `gemma4:e4b` | 42/46 | **3.1s** | 1 wrong template + 1 field mismatch |
 | `nemotron-3.5-bolt:e4b` | 29/46 | 9.0s | **14 wrong templates** |
