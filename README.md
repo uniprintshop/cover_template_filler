@@ -241,6 +241,7 @@ Full-corpus comparison (46 cases, one round each; see
 | `gemma4:12b` | 43/46 | 14.0s | 0 |
 | `mimo-v2.6:9b` | 42/46 | 16.0s | 2 field mismatches |
 | `gemma4:e4b` | 42/46 | **3.1s** | 1 wrong template + 1 field mismatch |
+| `ministral-3:3b` | 39/46 | 5.9s | 0 (but 6 wrong refusals) |
 | `nemotron-3.5-bolt:e4b` | 29/46 | 9.0s | **14 wrong templates** |
 
 `gemma4:e4b` is roughly 5× faster than the other two, but stamped a wrong
@@ -249,7 +250,8 @@ foil-stamping and the watcher is not run unattended, that trade-off is accepted
 and `gemma4:e4b` is the configured standard model. For unattended operation,
 `ornith-1.5:9b` remains the safest choice. `nemotron-3.5-bolt:e4b` is unusable:
 it systematically applies the Bergische IHK template to university covers
-(14 wrong templates in one run).
+(14 wrong templates in one run). `ministral-3:3b` is safe but too timid: it
+refuses logo-only covers the other models handle.
 
 ## Code and dependencies
 

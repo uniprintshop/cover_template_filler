@@ -37,11 +37,13 @@ Key findings:
 | `mimo-v2.6:9b` | 42/46 | 16.0s | 33.3s | 2 field mismatches | wrong degree (`30_generic_degree`), wrong title on rotated page (`45`); same 2 safe refusals |
 | `gemma4:e4b` | 42/46 | **3.1s** | 7.1s | 1 wrong template + 1 field mismatch | stamped `bergische-ihk` instead of `wuppertal` (`10_logo_second_page`); same rotated-page title miss; same 2 safe refusals |
 | `gemma4:12b` | 43/46 | 14.0s | 27.5s | **0** | 1 field mismatch (`32_no_title`); same 2 safe refusals. Zero wrong stamps — ornith-level safety |
+| `ministral-3:3b` | 39/46 | 5.9s | 12.8s | **0** | safe but over-refuses: 6 safe refusals, including logo-only covers the others handled (`06`, `12`, `15`, `42`); 1 field mismatch (`41_long_wrapped_title`) |
 | `nemotron-3.5-bolt:e4b` | 29/46 | 9.0s | 13.4s | **14 wrong templates** | systematic confusion: stamped `bergische-ihk` on 14 university covers incl. critical cases (`27`, `46`, `10`); same rotated-page title miss; same 2 safe refusals |
 
 Results: `20261125T125946Z_2e589288` (ornith),
 `20261125T150855Z_83d010c3` (mimo-v2.6), `20261125T154616Z_1bb7461e` (gemma4:e4b),
-`20261126T081603Z_311b6719` (nemotron-3.5-bolt), `20261126T084829Z_831b1296` (gemma4:12b).
+`20261126T081603Z_311b6719` (nemotron-3.5-bolt), `20261126T084829Z_831b1296` (gemma4:12b),
+`20261126T101847Z_bc84106b` (ministral-3:3b).
 
 Assessment: `gemma4:e4b` is ~5× faster but published a wrong institution foil
 once. Since covers are reviewed before stamping and the watcher is not run
